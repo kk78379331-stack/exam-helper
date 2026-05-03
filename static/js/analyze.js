@@ -272,14 +272,30 @@ function buildPracticeItemHtml(row, practiceType) {
   );
 }
 
-function buildPracticeBlockHtml(analysisPartial, practiceType, showReroll) {
-  let html = `<div id="practice-block">`;
-  html += `<h2 class="analysis__heading">同类型练习题</h2>`;
-  html += `<ol class="analysis-list practice-list" id="practice-questions-list">`;
-  for (const raw of analysisPartial.practice_questions || []) {
+function buildPracticeOlInnerHtml(questions, practiceType) {
+  let html = "";
+  for (const raw of questions || []) {
     html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType);
   }
-  html += `</ol>`;
+  return html;
+}
+
+function buildPracticeBatchSectionHtml(batchIndex, questions, practiceType) {
+  return (
+    `<section class="practice-batch" data-batch="${batchIndex}">` +
+    `<h3 class="practice-batch__title">第${batchIndex}批练习题</h3>` +
+    `<ol class="analysis-list practice-list">` +
+    buildPracticeOlInnerHtml(questions, practiceType) +
+    `</ol></section>`
+  );
+}
+
+function buildPracticeRootHtml(analysis, practiceType, showReroll) {
+  let html = `<div id="practice-root">`;
+  html += `<h2 class="analysis__heading">同类型练习题</h2>`;
+  html += `<div id="practice-batches">`;
+  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType);
+  html += `</div>`;
   if (showReroll) {
     html +=
       `<div class="practice-reroll-bar">` +
@@ -405,7 +421,7 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
   html += buildConceptExplanationsSection(data.analysis);
   html += `<h2 class="analysis__heading">难点解析</h2>`;
   html += `<div class="analysis__prose">${escapeHtml(String(data.analysis.difficult_analysis ?? "")).replace(/\n/g, "<br />")}</div>`;
-  html += buildPracticeBlockHtml(data.analysis, practiceType, showPracticeReroll);
+  html += buildPracticeRootHtml(data.analysis, practiceType, showPracticeReroll);
 
   section.innerHTML = html;
   section.hidden = false;
@@ -508,16 +524,28 @@ function init() {
             showFlash("error", payload.error || `换题失败（${res.status}）`);
             return;
           }
-          const block = document.getElementById("practice-block");
+          const batchesEl = document.getElementById("practice-batches");
           const pt = payload.practice_type || lastPracticeContext.practiceType;
-          if (block) {
-            block.outerHTML = buildPracticeBlockHtml(
-              { practice_questions: payload.practice_questions },
-              pt,
-              true
+          if (!batchesEl) {
+            showFlash("error", "页面结构异常，请重新分析后再试。");
+            return;
+          }
+          const existing = batchesEl.querySelectorAll(".practice-batch").length;
+          const nextBatch = existing + 1;
+          if (nextBatch > 1) {
+            batchesEl.insertAdjacentHTML(
+              "beforeend",
+              `<hr class="practice-batch-divider" aria-hidden="true" />`
             );
           }
-          showFlash("success", "已换新一批练习题。");
+          batchesEl.insertAdjacentHTML(
+            "beforeend",
+            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt)
+          );
+          batchesEl
+            .querySelector(`.practice-batch[data-batch="${nextBatch}"]`)
+            ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          showFlash("success", `已追加第 ${nextBatch} 批练习题。`);
         } catch (err) {
           showFlash("error", err.message || "网络错误，请稍后重试。");
         } finally {

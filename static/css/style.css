@@ -536,6 +536,29 @@ body {
   line-height: 1.55;
 }
 
+#practice-batches {
+  margin: 0;
+}
+
+.practice-batch {
+  margin-bottom: 0.25rem;
+}
+
+.practice-batch__title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent-hover);
+  letter-spacing: 0.02em;
+}
+
+.practice-batch-divider {
+  margin: 1.15rem 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+
 .practice-reroll-bar {
   margin-top: 1rem;
   padding-top: 0.85rem;

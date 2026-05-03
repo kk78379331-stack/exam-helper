@@ -31,7 +31,8 @@ IMPORTANCE_ALIASES = {
 # 写入用户消息，指导练习题格式（system 中保留 JSON 结构约定）
 PRACTICE_TYPE_INSTRUCTIONS: dict[str, str] = {
     "mcq": """【练习题型：选择题 MCQ】
-请生成单项选择题。每道题的 question 字段中必须包含：题干段落，以及换行后四个选项，格式严格为（每行一项）：
+请生成单项选择题。题干、四个选项的正文、reference_answer、solution_approach 均须以**简体中文**为主（见系统对练习题语言的强制规则）；英文仅允许以「中文（English term）」括注专业术语。
+每道题的 question 字段中必须包含：题干段落，以及换行后四个选项，格式严格为（每行一项）：
 A. …
 B. …
 C. …
@@ -40,13 +41,15 @@ D. …
 reference_answer 在选项字母之外，可用一两句话解释为何该选项正确；solution_approach 写完整解题思路（排除法或推导）。""",
     "short_answer": """【练习题型：简答题】
 每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+题干、参考答案、解题思路须以简体中文书写（见系统强制语言规则）。
 每道题的 question 为简答设问；reference_answer 为要点式或简短段落式参考答案；solution_approach 说明如何依据讲义组织答案、踩分点。""",
     "calculation": """【练习题型：计算题】
 每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+题干、文字说明、参考答案、解题思路须以简体中文书写（见系统强制语言规则）；公式与变量符号可用常规数学/物理记号。
 每道题的 question 须给出已知与待求；reference_answer 含公式、过程与数值结果（含单位）；solution_approach 说明公式选用与步骤要点。""",
     "mixed": """【练习题型：混合】
 请在 practice_questions 中合理搭配至少两种题型。客观单选题对应 question_format 为 "mcq"，须含 A.–D. 四行选项及 correct_option（A–D）；简答、计算等主观题对应 question_format 为 "written"，correct_option 为 ""。
-每题均须含 question、reference_answer、solution_approach。""",
+每题均须含 question、reference_answer、solution_approach；全部文字说明须遵守系统对练习题中文主写的强制规则。""",
 }
 
 SYSTEM_PROMPT = """你是面向留学生的课程复习助教。用户会提供课程讲义摘录（语言任意）以及练习题型要求（在用户消息开头）。
@@ -69,6 +72,8 @@ JSON 的键必须严格为：
   - "question_format": 取值为 "mcq" 或 "written"（"mcq"=单选题；"written"=简答、计算等非点击选项题）；
   - "correct_option": 当 question_format 为 "mcq" 时，必须是 "A"、"B"、"C"、"D" 之一；为 "written" 时必须为空字符串 ""。
 
+【练习题语言（强制）】practice_questions 中每一题的 question、reference_answer、solution_approach 必须使用**简体中文**进行出题与解析（国际通用计量单位符号如 m、s、N 等可保留）。**禁止**用整句、整段英文来出题或写解析；**仅允许**在确有必要时用「中文术语（English term）」这一对中文全角括号的形式夹注专业英文名词，且括号外主体仍为中文。选择题 A.–D. 各选项的正文同样以中文为主，英文仅限括注术语。化学式、公认数学/物理符号、公式本身不受「必须中文」限制，但其前后文字说明仍须为中文。
+
 练习题数量适中（例如 3～8 题），每题必须同时给出上述五键，且内容具体、可核对。
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
@@ -77,6 +82,8 @@ REGENERATE_PRACTICE_PROMPT = """你是面向留学生的课程复习助教。
 用户会再次提供**同一份**讲义摘录，且刚刚已完成过一批练习题；你的任务是根据该讲义**重新生成一整批全新的练习题**（设问角度、情境、选项或数值须与常见套路有明显变化，**禁止**仅对上一批题目做同义改写或微调）。
 只输出**一个** JSON 对象，不要 Markdown 代码围栏、不要任何前后说明文字。该对象**只包含一个键**：
 - "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq" 或 "written"）、correct_option（mcq 时为 A/B/C/D 之一，written 时为 ""）；题型与选项格式须符合用户消息开头的题型说明。
+
+【练习题语言（强制）】须与主分析接口相同：question、reference_answer、solution_approach 一律以**简体中文**出题与解析；英文仅允许「中文（English term）」括注专业术语；禁止整段英文叙述。
 
 练习题数量适中（例如 3～8 题），内容具体可作答。
 
