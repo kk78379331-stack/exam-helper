@@ -55,15 +55,17 @@
           data-regenerate-url="{{ url_for('api_regenerate_practice') }}"
         >
           <label class="file-label">
-            <span class="file-label__text">选择 PDF 或 PPTX 文件（在本地解析，仅上传文字）</span>
+            <span class="file-label__text">选择 PDF 或 PPTX 文件（可多选；在本地依次解析，仅上传合并后的文字）</span>
             <input
               class="file-input"
               type="file"
               id="material-file"
               accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-              required
+              multiple
             />
           </label>
+          <ul id="file-queue-list" class="file-queue-list" hidden aria-label="已选文件列表"></ul>
+          <p id="file-queue-empty" class="file-queue-empty">尚未选择文件，请点击上方按钮选择。</p>
 
           <fieldset class="practice-type-fieldset">
             <legend class="practice-type-legend">考试题型（生成对应格式的练习题）</legend>
@@ -96,7 +98,7 @@
 
         <section class="result" id="result-section" aria-live="polite" hidden>
           <h2 class="result__title">来源文件</h2>
-          <p class="result__filename" id="source-filename"></p>
+          <div class="result__filename" id="source-filename"></div>
         </section>
 
         <section class="analysis" id="analysis-section" aria-label="AI 复习内容" hidden></section>

@@ -10,6 +10,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 /** 最近一次「文件分析」的讲义文本与题型，用于换一批练习题（历史记录载入后为空） */
 let lastPracticeContext = null;
 
+/** 待分析的本地文件队列（可多选累加，可从列表移除） */
+let materialFileQueue = [];
+
+/** 历史记录面板中正在编辑显示名称的记录 id */
+let historyEditId = null;
+
 function escapeHtml(s) {
   const d = document.createElement("div");
   d.textContent = s;
@@ -120,7 +126,30 @@ function appendHistoryRecord({ source_name, practice_type, text_truncated, analy
 }
 
 function deleteHistoryItem(id) {
+  if (historyEditId === id) historyEditId = null;
   saveHistory(loadHistory().filter((x) => x.id !== id));
+}
+
+function historyDisplayName(item) {
+  const lines = String(item.source_name || "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return lines.length ? lines.join("、") : "（未命名）";
+}
+
+function commitHistoryRename(id, rawValue) {
+  historyEditId = null;
+  const trimmed = String(rawValue || "").trim();
+  const list = loadHistory();
+  const idx = list.findIndex((x) => x.id === id);
+  if (idx < 0) {
+    renderHistoryList();
+    return;
+  }
+  list[idx].source_name = trimmed || "（未命名）";
+  saveHistory(list);
+  renderHistoryList();
 }
 
 function clearAllHistory() {
@@ -157,14 +186,82 @@ function renderHistoryList() {
     const timeStr = Number.isNaN(t.getTime())
       ? ""
       : t.toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" });
+
+    if (historyEditId === item.id) {
+      li.classList.add("history-item--editing");
+      const row = document.createElement("div");
+      row.className = "history-item__edit-row";
+      const inp = document.createElement("input");
+      inp.type = "text";
+      inp.className = "history-item__name-input";
+      inp.setAttribute("aria-label", "记录显示名称");
+      inp.value = String(item.source_name || "").replace(/\r?\n/g, "、");
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "history-item__edit-cancel btn btn--secondary btn--small";
+      cancelBtn.dataset.action = "cancel-edit-history";
+      cancelBtn.textContent = "取消";
+      row.appendChild(inp);
+      row.appendChild(cancelBtn);
+      const hint = document.createElement("p");
+      hint.className = "history-item__edit-hint";
+      hint.textContent = "回车保存；Esc 取消";
+      li.appendChild(row);
+      li.appendChild(hint);
+      ul.appendChild(li);
+      requestAnimationFrame(() => {
+        inp.focus();
+        inp.select();
+      });
+      continue;
+    }
+
     li.innerHTML =
       `<button type="button" class="history-item__main" data-action="open-history">` +
-      `<span class="history-item__name">${escapeHtml(item.source_name || "（未命名）")}</span>` +
+      `<span class="history-item__name">${escapeHtml(historyDisplayName(item))}</span>` +
       `<span class="history-item__time">${escapeHtml(timeStr)}</span>` +
       `</button>` +
+      `<button type="button" class="history-item__edit" data-action="edit-history" aria-label="编辑名称">编辑</button>` +
       `<button type="button" class="history-item__delete" data-action="delete-history" aria-label="删除此条">删除</button>`;
     ul.appendChild(li);
   }
+}
+
+function renderMaterialFileQueue() {
+  const listEl = document.getElementById("file-queue-list");
+  const emptyEl = document.getElementById("file-queue-empty");
+  if (!listEl || !emptyEl) return;
+  listEl.innerHTML = "";
+  const n = materialFileQueue.length;
+  emptyEl.hidden = n > 0;
+  listEl.hidden = n === 0;
+  for (let i = 0; i < n; i++) {
+    const f = materialFileQueue[i];
+    const li = document.createElement("li");
+    li.className = "file-queue-item";
+    li.innerHTML =
+      `<span class="file-queue-item__name">${escapeHtml(f.name)}</span>` +
+      `<button type="button" class="file-queue-item__remove btn btn--secondary btn--small" data-action="remove-queued-file" data-index="${i}" aria-label="从列表移除此文件">移除</button>`;
+    listEl.appendChild(li);
+  }
+}
+
+function setSourceFilenameDisplay(sourceName) {
+  const el = document.getElementById("source-filename");
+  if (!el) return;
+  const raw = String(sourceName || "").trim();
+  if (!raw) {
+    el.textContent = "（未命名）";
+    return;
+  }
+  const lines = raw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    el.textContent = lines[0] || "（未命名）";
+    return;
+  }
+  el.innerHTML = lines
+    .map((name) => `<div class="result__source-line">${escapeHtml(name)}</div>`)
+    .join("");
 }
 
 function normalizePracticeRow(raw) {
@@ -448,6 +545,8 @@ function buildPracticeInnerHtml(analysis, practiceType, showReroll) {
 
 function resetToUploadState() {
   lastPracticeContext = null;
+  materialFileQueue = [];
+  renderMaterialFileQueue();
   clearFlash();
   const toolbar = document.getElementById("result-toolbar");
   const resultSection = document.getElementById("result-section");
@@ -484,7 +583,7 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
 
   if (toolbar) toolbar.hidden = false;
 
-  nameEl.textContent = data.source_name || "（未命名）";
+  setSourceFilenameDisplay(data.source_name);
   resultSection.hidden = false;
 
   let html = `<div class="analysis-accordions">`;
@@ -522,12 +621,59 @@ async function extractLocalText(file) {
   throw new Error("请选择 .pdf 或 .pptx 文件。");
 }
 
+/** 将多份已抽取文本按顺序合并，便于模型综合多文件 */
+function buildMergedMaterialText(parts) {
+  const multi = parts.length > 1;
+  let body = "";
+  if (multi) {
+    body +=
+      "【说明】以下文本由多个讲义文件按用户所选顺序依次抽取并拼接；每段前有文件名标记。请综合全部材料，输出统一的考点、概念详解、难点解析与练习题（勿只针对某一个文件）。\n\n";
+  }
+  for (const { name, text } of parts) {
+    body += `────────\n《${name}》\n────────\n\n${text}\n\n`;
+  }
+  return body.trimEnd();
+}
+
+function formatSourceNamesForPayload(files) {
+  return files.map((f) => f.name).join("\n");
+}
+
+function onMaterialFileInputChange(e) {
+  const input = e.target;
+  const picked = Array.from(input.files || []);
+  for (const f of picked) {
+    const ext = extOf(f.name);
+    if (ext !== "pdf" && ext !== "pptx") {
+      showFlash("error", `已跳过不支持的文件：${f.name}（仅支持 .pdf / .pptx）`);
+      continue;
+    }
+    const dup = materialFileQueue.some(
+      (x) => x.name === f.name && x.size === f.size && x.lastModified === f.lastModified
+    );
+    if (!dup) materialFileQueue.push(f);
+  }
+  input.value = "";
+  renderMaterialFileQueue();
+}
+
 function init() {
   const form = document.getElementById("analyze-form");
   const maxChars = parseInt(form?.dataset.maxChars || "120000", 10);
   const apiUrl = form?.dataset.apiUrl || "/api/analyze";
 
   if (!form) return;
+
+  renderMaterialFileQueue();
+  document.getElementById("material-file")?.addEventListener("change", onMaterialFileInputChange);
+  document.getElementById("file-queue-list")?.addEventListener("click", (e) => {
+    const rm = e.target.closest("[data-action='remove-queued-file']");
+    if (!rm) return;
+    const i = Number.parseInt(rm.getAttribute("data-index") || "", 10);
+    if (Number.isNaN(i) || i < 0 || i >= materialFileQueue.length) return;
+    materialFileQueue.splice(i, 1);
+    renderMaterialFileQueue();
+  });
 
   document.getElementById("btn-history-open")?.addEventListener("click", openHistoryPanel);
   document.getElementById("btn-history-close")?.addEventListener("click", closeHistoryPanel);
@@ -538,7 +684,44 @@ function init() {
     renderHistoryList();
   });
 
+  document.getElementById("history-list")?.addEventListener("keydown", (e) => {
+    const inp = e.target.closest(".history-item__name-input");
+    if (!inp) return;
+    const li = inp.closest(".history-item");
+    const id = li?.dataset.id;
+    if (!id) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      commitHistoryRename(id, inp.value);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      historyEditId = null;
+      renderHistoryList();
+    }
+  });
+
   document.getElementById("history-list")?.addEventListener("click", (e) => {
+    const cancelEd = e.target.closest("[data-action='cancel-edit-history']");
+    if (cancelEd) {
+      e.preventDefault();
+      historyEditId = null;
+      renderHistoryList();
+      return;
+    }
+    const editBtn = e.target.closest("[data-action='edit-history']");
+    if (editBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const li = editBtn.closest(".history-item");
+      const id = li?.dataset.id;
+      if (id) {
+        historyEditId = id;
+        renderHistoryList();
+      }
+      return;
+    }
     const del = e.target.closest("[data-action='delete-history']");
     if (del) {
       e.preventDefault();
@@ -557,6 +740,7 @@ function init() {
       const id = li?.dataset.id;
       const rec = loadHistory().find((x) => x.id === id);
       if (!rec?.analysis) return;
+      historyEditId = null;
       closeHistoryPanel();
       clearFlash();
       lastPracticeContext = null;
@@ -724,10 +908,8 @@ function init() {
     e.preventDefault();
     clearFlash();
 
-    const input = document.getElementById("material-file");
-    const file = input?.files?.[0];
-    if (!file) {
-      showFlash("error", "请选择要分析的 PDF 或 PPTX 文件。");
+    if (materialFileQueue.length === 0) {
+      showFlash("error", "请先选择至少一个 PDF 或 PPTX 文件（可多选，也可分多次加入列表）。");
       return;
     }
 
@@ -744,11 +926,26 @@ function init() {
 
     btn.disabled = true;
     const oldLabel = btn.textContent;
-    btn.textContent = "正在提取文字…";
+    const queueSnapshot = materialFileQueue.slice();
+    const sourceNamePayload = formatSourceNamesForPayload(queueSnapshot);
 
-    let text;
+    const extractedParts = [];
     try {
-      text = await extractLocalText(file);
+      for (let i = 0; i < queueSnapshot.length; i++) {
+        const file = queueSnapshot[i];
+        btn.textContent = `正在提取 ${i + 1}/${queueSnapshot.length}：${file.name}`;
+        const piece = await extractLocalText(file);
+        if (!piece || !piece.trim()) {
+          showFlash(
+            "error",
+            `未能从「${file.name}」中读出有效文字，可能是扫描版 PDF 或空白演示文稿。请移除或替换该文件后重试。`
+          );
+          btn.disabled = false;
+          btn.textContent = oldLabel;
+          return;
+        }
+        extractedParts.push({ name: file.name, text: piece.trim() });
+      }
     } catch (err) {
       showFlash("error", err.message || String(err));
       btn.disabled = false;
@@ -756,15 +953,9 @@ function init() {
       return;
     }
 
-    if (!text) {
-      showFlash("error", "未能从文件中读出文字，可能是扫描版 PDF 或空白演示文稿。");
-      btn.disabled = false;
-      btn.textContent = oldLabel;
-      return;
-    }
-
+    const merged = buildMergedMaterialText(extractedParts);
     let textTruncated = false;
-    let sendText = text;
+    let sendText = merged;
     if (sendText.length > maxChars) {
       sendText = sendText.slice(0, maxChars);
       textTruncated = true;
@@ -781,7 +972,7 @@ function init() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: sendText,
-          source_name: file.name,
+          source_name: sourceNamePayload,
           practice_type: practiceType,
         }),
       });
@@ -801,8 +992,12 @@ function init() {
         practiceType: payload.practice_type || practiceType,
         regenerateUrl: form.dataset.regenerateUrl || "/api/regenerate-practice",
       };
+      const displaySource =
+        typeof payload.source_name === "string" && payload.source_name.trim()
+          ? payload.source_name
+          : sourceNamePayload;
       renderAnalysis(
-        { source_name: payload.source_name, analysis: payload.analysis },
+        { source_name: displaySource, analysis: payload.analysis },
         textTruncated,
         maxChars,
         payload.practice_type || practiceType,
@@ -810,7 +1005,7 @@ function init() {
       );
       try {
         appendHistoryRecord({
-          source_name: payload.source_name || file.name,
+          source_name: displaySource,
           practice_type: payload.practice_type || practiceType,
           text_truncated: textTruncated,
           analysis: payload.analysis,

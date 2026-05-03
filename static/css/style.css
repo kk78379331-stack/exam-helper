@@ -184,6 +184,22 @@ body {
   color: var(--muted);
 }
 
+.history-item__edit {
+  flex-shrink: 0;
+  padding: 0 0.5rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  color: var(--accent-hover);
+  background: rgba(91, 140, 255, 0.08);
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.history-item__edit:hover {
+  background: rgba(91, 140, 255, 0.16);
+}
+
 .history-item__delete {
   flex-shrink: 0;
   padding: 0 0.55rem;
@@ -198,6 +214,41 @@ body {
 
 .history-item__delete:hover {
   background: rgba(255, 107, 107, 0.18);
+}
+
+.history-item--editing {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0.55rem 0.65rem;
+  gap: 0.35rem;
+}
+
+.history-item__edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.history-item__name-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.history-item__edit-cancel {
+  flex-shrink: 0;
+}
+
+.history-item__edit-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted);
 }
 
 .history-empty {
@@ -346,6 +397,46 @@ body {
   background: var(--accent-hover);
 }
 
+.file-queue-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.file-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.file-queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.file-queue-item__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  word-break: break-all;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.file-queue-item__remove {
+  flex-shrink: 0;
+}
+
 .btn {
   padding: 0.75rem 1.25rem;
   border: none;
@@ -406,6 +497,15 @@ body {
   border-radius: 8px;
   font-size: 1rem;
   word-break: break-all;
+}
+
+.result__source-line {
+  padding: 0.25rem 0;
+  line-height: 1.45;
+}
+
+.result__source-line:not(:last-child) {
+  border-bottom: 1px solid rgba(91, 140, 255, 0.15);
 }
 
 .analysis {
