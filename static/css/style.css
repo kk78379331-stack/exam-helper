@@ -437,6 +437,13 @@ body {
   flex-shrink: 0;
 }
 
+.file-upload-limit-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--error);
+}
+
 .btn {
   padding: 0.75rem 1.25rem;
   border: none;
