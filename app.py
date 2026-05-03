@@ -1,114 +1,69 @@
 from __future__ import annotations
 
 import os
-import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
-# 必须从项目根目录加载 .env；无参数 load_dotenv 只查「当前工作目录」，换目录运行会读不到 Key。
 load_dotenv(BASE_DIR / ".env")
 
-from flask import Flask, flash, redirect, render_template, request, url_for
-from werkzeug.utils import secure_filename
+from flask import Flask, jsonify, render_template, request
 
-from deepseek_client import DeepSeekError, MAX_INPUT_CHARS, analyze_course_text
-from text_extract import ExtractionError, extract_text
-UPLOAD_FOLDER = BASE_DIR / "uploads"
-ALLOWED_EXTENSIONS = {"pdf", "ppt", "pptx"}
+from deepseek_client import MAX_INPUT_CHARS, DeepSeekError, analyze_course_text
 
+# Vercel 等对请求体有限制：仅接收 JSON 文本，限制在 2MB 以内足够覆盖截断后的讲义文本
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-in-production")
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
-
-UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
 
-def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-def save_upload(file_storage) -> tuple[str, str]:
-    """返回 (展示用原始文件名, 磁盘上的安全文件名)。"""
-    original = file_storage.filename or ""
-    ext = original.rsplit(".", 1)[1].lower()
-    safe = secure_filename(original)
-    if not safe or safe == f".{ext}" or safe == ext:
-        safe = f"upload_{uuid.uuid4().hex}.{ext}"
-    dest = UPLOAD_FOLDER / safe
-    file_storage.save(dest)
-    return original, safe
-
-
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET"])
 def index():
-    last_filename = None
-    analysis = None
-    text_truncated = False
-
-    if request.method == "GET":
-        return render_template(
-            "index.html",
-            last_filename=None,
-            analysis=None,
-            text_truncated=False,
-            max_chars=MAX_INPUT_CHARS,
-        )
-
-    if "material_file" not in request.files:
-        flash("请选择要上传的文件（PDF 或 PPT）。", "error")
-        return redirect(url_for("index"))
-
-    file = request.files["material_file"]
-    if file.filename == "":
-        flash("请选择要上传的文件（PDF 或 PPT）。", "error")
-        return redirect(url_for("index"))
-
-    if not allowed_file(file.filename):
-        flash("仅支持 .pdf、.ppt 或 .pptx 格式。", "error")
-        return redirect(url_for("index"))
-
-    display_name, safe_name = save_upload(file)
-    last_filename = display_name
-    disk_path = UPLOAD_FOLDER / safe_name
-
-    try:
-        doc_text = extract_text(disk_path)
-    except ExtractionError as exc:
-        flash(str(exc), "error")
-        return render_template(
-            "index.html",
-            last_filename=last_filename,
-            analysis=None,
-            text_truncated=False,
-            max_chars=MAX_INPUT_CHARS,
-        )
-
-    if len(doc_text) > MAX_INPUT_CHARS:
-        text_truncated = True
-
-    try:
-        analysis = analyze_course_text(doc_text)
-    except DeepSeekError as exc:
-        flash(str(exc), "error")
-        return render_template(
-            "index.html",
-            last_filename=last_filename,
-            analysis=None,
-            text_truncated=text_truncated,
-            max_chars=MAX_INPUT_CHARS,
-        )
-
-    flash("分析完成。", "success")
-
     return render_template(
         "index.html",
-        last_filename=last_filename,
-        analysis=analysis,
-        text_truncated=text_truncated,
         max_chars=MAX_INPUT_CHARS,
+    )
+
+
+@app.route("/api/analyze", methods=["POST"])
+def api_analyze():
+    if not request.is_json:
+        return jsonify({"error": "请使用 application/json 发送请求。"}), 415
+
+    data = request.get_json(silent=True) or {}
+    text = data.get("text")
+    source_name = data.get("source_name")
+
+    if not isinstance(text, str):
+        return jsonify({"error": "缺少字段 text 或类型错误。"}), 400
+
+    text = text.strip()
+    if not text:
+        return jsonify({"error": "text 为空，无法分析。"}), 400
+
+    text_truncated = False
+    if len(text) > MAX_INPUT_CHARS:
+        text = text[:MAX_INPUT_CHARS]
+        text_truncated = True
+
+    if isinstance(source_name, str):
+        source_name = source_name.strip() or None
+    else:
+        source_name = None
+
+    try:
+        analysis = analyze_course_text(text)
+    except DeepSeekError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify(
+        {
+            "ok": True,
+            "source_name": source_name,
+            "analysis": analysis,
+            "text_truncated": text_truncated,
+        }
     )
 
 

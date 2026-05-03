@@ -10,77 +10,47 @@
     <div class="page">
       <header class="header">
         <h1 class="title">留学生期末复习助手</h1>
-        <p class="subtitle">上传课程 PDF 或 PPT，DeepSeek 将用中文生成考点、难点与练习题</p>
+        <p class="subtitle">
+          在浏览器中提取 PDF / PPTX 文字后发送给 DeepSeek，生成中文考点、难点与练习题（无大文件上传，适配
+          Vercel 等部署）
+        </p>
       </header>
 
       <main class="card">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <ul class="flash-list" role="status">
-              {% for category, message in messages %}
-                <li class="flash flash--{{ category }}">{{ message }}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-        {% endwith %}
+        <ul class="flash-list" id="flash-list" role="status" aria-live="polite"></ul>
 
         <form
           class="upload-form"
-          action="{{ url_for('index') }}"
-          method="post"
-          enctype="multipart/form-data"
+          id="analyze-form"
+          data-max-chars="{{ max_chars }}"
+          data-api-url="{{ url_for('api_analyze') }}"
         >
           <label class="file-label">
-            <span class="file-label__text">选择 PDF 或 PPT 文件</span>
+            <span class="file-label__text">选择 PDF 或 PPTX 文件（在本地解析，仅上传文字）</span>
             <input
               class="file-input"
               type="file"
-              name="material_file"
-              accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              id="material-file"
+              accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
               required
             />
           </label>
-          <button class="btn btn--primary" type="submit">上传并分析</button>
+          <button class="btn btn--primary" type="submit">提取文字并分析</button>
         </form>
 
-        {% if last_filename %}
-          <section class="result" aria-live="polite">
-            <h2 class="result__title">已上传文件</h2>
-            <p class="result__filename">{{ last_filename }}</p>
-          </section>
-        {% endif %}
+        <section class="result" id="result-section" aria-live="polite" hidden>
+          <h2 class="result__title">来源文件</h2>
+          <p class="result__filename" id="source-filename"></p>
+        </section>
 
-        {% if analysis %}
-          <section class="analysis" aria-label="AI 复习内容">
-            {% if text_truncated %}
-              <p class="analysis__note">
-                讲义较长，仅前 {{ max_chars }} 个字符已参与本次分析。
-              </p>
-            {% endif %}
-            <h2 class="analysis__heading">核心考点列表</h2>
-            <ol class="analysis-list">
-              {% for item in analysis.core_points %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ol>
-
-            <h2 class="analysis__heading">难点解析</h2>
-            <div class="analysis__prose">{{ analysis.difficult_analysis }}</div>
-
-            <h2 class="analysis__heading">同类型练习题</h2>
-            <ol class="analysis-list">
-              {% for item in analysis.practice_questions %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ol>
-          </section>
-        {% endif %}
+        <section class="analysis" id="analysis-section" aria-label="AI 复习内容" hidden></section>
       </main>
 
       <footer class="footer">
-        使用 DeepSeek（deepseek-chat）分析；请在环境变量 DEEPSEEK_API_KEY 中配置密钥。旧版 .ppt 需本机安装
-        LibreOffice 或另存为 .pptx。
+        使用 DeepSeek（deepseek-chat）；请在环境变量 DEEPSEEK_API_KEY 中配置密钥。旧版 .ppt
+        请先在本地转为 PDF 或 PPTX。大文件仅在浏览器中读取，提交给服务器的仅为纯文本。
       </footer>
     </div>
+    <script type="module" src="{{ url_for('static', filename='js/analyze.js') }}"></script>
   </body>
 </html>
