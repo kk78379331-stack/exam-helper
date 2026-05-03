@@ -149,6 +149,23 @@ body {
   background: var(--accent-hover);
 }
 
+.btn--secondary {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.btn--secondary:hover {
+  color: var(--text);
+  border-color: var(--muted);
+  background: rgba(139, 156, 179, 0.08);
+}
+
+.result-toolbar {
+  margin-top: 1.25rem;
+  margin-bottom: 0.25rem;
+}
+
 .result {
   margin-top: 1.5rem;
   padding-top: 1.5rem;

@@ -80,11 +80,38 @@ function clearFlash() {
   if (ul) ul.innerHTML = "";
 }
 
+function resetToUploadState() {
+  clearFlash();
+  const toolbar = document.getElementById("result-toolbar");
+  const resultSection = document.getElementById("result-section");
+  const nameEl = document.getElementById("source-filename");
+  const analysisSection = document.getElementById("analysis-section");
+  const input = document.getElementById("material-file");
+  const form = document.getElementById("analyze-form");
+
+  if (toolbar) toolbar.hidden = true;
+  if (resultSection) resultSection.hidden = true;
+  if (nameEl) nameEl.textContent = "";
+  if (analysisSection) {
+    analysisSection.innerHTML = "";
+    analysisSection.hidden = true;
+  }
+  if (input) input.value = "";
+
+  if (form) {
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    input?.focus();
+  }
+}
+
 function renderAnalysis(data, textTruncated, maxChars) {
   const section = document.getElementById("analysis-section");
   const resultSection = document.getElementById("result-section");
   const nameEl = document.getElementById("source-filename");
+  const toolbar = document.getElementById("result-toolbar");
   if (!section || !resultSection || !nameEl) return;
+
+  if (toolbar) toolbar.hidden = false;
 
   nameEl.textContent = data.source_name || "（未命名）";
   resultSection.hidden = false;
@@ -107,7 +134,7 @@ function renderAnalysis(data, textTruncated, maxChars) {
 
   section.innerHTML = html;
   section.hidden = false;
-  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  (toolbar || resultSection).scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function extractLocalText(file) {
@@ -132,6 +159,10 @@ function init() {
 
   if (!form) return;
 
+  document.getElementById("btn-reset-upload")?.addEventListener("click", () => {
+    resetToUploadState();
+  });
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearFlash();
@@ -146,6 +177,8 @@ function init() {
     const btn = form.querySelector('button[type="submit"]');
     const analysisSection = document.getElementById("analysis-section");
     const resultSection = document.getElementById("result-section");
+    const toolbar = document.getElementById("result-toolbar");
+    if (toolbar) toolbar.hidden = true;
     if (analysisSection) {
       analysisSection.innerHTML = "";
       analysisSection.hidden = true;
