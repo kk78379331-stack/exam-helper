@@ -47,9 +47,21 @@ reference_answer 在选项字母之外，可用一两句话解释为何该选项
 每道题 question_format 必须为 "written"，correct_option 必须为 ""。
 题干、文字说明、参考答案、解题思路须以简体中文书写（见系统强制语言规则）；公式与变量符号可用常规数学/物理记号。
 每道题的 question 须给出已知与待求；reference_answer 含公式、过程与数值结果（含单位）；solution_approach 说明公式选用与步骤要点。""",
-    "mixed": """【练习题型：混合】
-请在 practice_questions 中合理搭配至少两种题型。客观单选题对应 question_format 为 "mcq"，须含 A.–D. 四行选项及 correct_option（A–D）；简答、计算等主观题对应 question_format 为 "written"，correct_option 为 ""。
+    "mixed": """【练习题型：混合】（硬性结构，必须严格遵守）
+本批 practice_questions 中**必须同时包含**以下三类，**缺一不可**，且**禁止**整批题目几乎全是同一种题型：
+1）**至少一道** question_format 为 "mcq" 的单项选择题（题干 + A.–D. 四行选项 + correct_option）；
+2）**至少一道** question_format 为 "written" 的**简答题**（以文字阐述、列举、比较为主，不要求数值推导为主）；
+3）**至少一道** question_format 为 "written" 的**计算题**（须含明确已知量与待求量、公式代入或数值运算为主，与纯简答在形式上可区分）。
+若总题数为 N，则三类题目的数量宜**相对均衡**（例如 N=6 时 MCQ、简答、计算各约 2 道；允许小幅偏差，但**禁止**出现某一类仅 1 道而其余绝大部分集中在另一类的情况）。
 每题均须含 question、reference_answer、solution_approach；全部文字说明须遵守系统对练习题中文主写的强制规则。""",
+}
+
+# 换一批练习题时追加到用户消息末尾，约束本批题型分布（与所选题型一致、不畸形集中）
+REROLL_DISTRIBUTION_APPEND: dict[str, str] = {
+    "mcq": "【本批换题】仍为纯选择题：各题应覆盖讲义中不同知识点或设问角度，避免本批多题高度同质或仅围绕同一结论反复提问；难度与干扰项设计宜有梯度。",
+    "short_answer": "【本批换题】仍为纯简答题：各题设问切入点、作答篇幅与得分点结构应有差异，避免多题几乎雷同；勿把本应属于计算推导的主干放在简答里凑数。",
+    "calculation": "【本批换题】仍为纯计算题：各题涉及的公式链、未知量类型与数值情境宜多样化，避免本批几乎全部同一套路或仅改数字的重复题。",
+    "mixed": "【本批换题】用户选择为**混合题型**：本批仍须**至少含 1 道 MCQ、1 道简答 written、1 道计算 written**（与首次生成规则相同），且三类数量宜**均衡**，禁止本批又倒向「几乎全是选择题」或「几乎全是简答而无计算」等畸形分布；设问须与上一批明显不同。",
 }
 
 SYSTEM_PROMPT = """你是面向留学生的课程复习助教。用户会提供课程讲义摘录（语言任意）以及练习题型要求（在用户消息开头）。
@@ -75,6 +87,7 @@ JSON 的键必须严格为：
 【练习题语言（强制）】practice_questions 中每一题的 question、reference_answer、solution_approach 必须使用**简体中文**进行出题与解析（国际通用计量单位符号如 m、s、N 等可保留）。**禁止**用整句、整段英文来出题或写解析；**仅允许**在确有必要时用「中文术语（English term）」这一对中文全角括号的形式夹注专业英文名词，且括号外主体仍为中文。选择题 A.–D. 各选项的正文同样以中文为主，英文仅限括注术语。化学式、公认数学/物理符号、公式本身不受「必须中文」限制，但其前后文字说明仍须为中文。
 
 练习题数量适中（例如 3～8 题），每题必须同时给出上述五键，且内容具体、可核对。
+若用户消息中的题型为**混合（mixed）**，则 practice_questions 须满足该混合说明中的**硬性三类齐全与均衡**要求，不得用「几乎全是同一类」冒充混合。
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
 
@@ -84,6 +97,8 @@ REGENERATE_PRACTICE_PROMPT = """你是面向留学生的课程复习助教。
 - "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq" 或 "written"）、correct_option（mcq 时为 A/B/C/D 之一，written 时为 ""）；题型与选项格式须符合用户消息开头的题型说明。
 
 【练习题语言（强制）】须与主分析接口相同：question、reference_answer、solution_approach 一律以**简体中文**出题与解析；英文仅允许「中文（English term）」括注专业术语；禁止整段英文叙述。
+
+【换一批时的题型分布】本批题目须**严格服从**用户消息开头的题型说明；**不得**为求新而偏离用户所选题型。若用户选择**混合题型**：本批仍须含**至少一道 MCQ、至少一道简答、至少一道计算**，且三类数量宜**相对均衡**，禁止整批几乎只剩一种子题型。若用户选择**单一题型**（仅 MCQ / 仅简答 / 仅计算）：本批须**全部为**该题型，但**内部**仍须丰富设问角度与考查点，避免本批多题高度同质、或（在单一题型允许范围内）明显倒向某一固定套路。
 
 练习题数量适中（例如 3～8 题），内容具体可作答。
 
@@ -367,9 +382,12 @@ def regenerate_practice_questions(document_text: str, practice_type: str = "mixe
         timeout=300.0,
     )
 
+    reroll_append = REROLL_DISTRIBUTION_APPEND.get(ptype, REROLL_DISTRIBUTION_APPEND["mixed"])
+
     user_content = (
         f"{type_block}\n\n"
         "【任务】上一批练习题已完成。请仅根据下列同一讲义内容，输出**全新一批**练习题（JSON 仅含 practice_questions 键）。\n\n"
+        f"{reroll_append}\n\n"
         f"讲义文本（可能已截断至约 {MAX_INPUT_CHARS} 字）：\n\n{trimmed}"
     )
 
