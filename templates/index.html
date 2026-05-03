@@ -35,6 +35,29 @@
               required
             />
           </label>
+
+          <fieldset class="practice-type-fieldset">
+            <legend class="practice-type-legend">考试题型（生成对应格式的练习题）</legend>
+            <div class="practice-type-options" role="radiogroup" aria-label="考试题型">
+              <label class="practice-type-option">
+                <input type="radio" name="practice_type" value="mcq" />
+                <span>选择题（MCQ）</span>
+              </label>
+              <label class="practice-type-option">
+                <input type="radio" name="practice_type" value="short_answer" />
+                <span>简答题</span>
+              </label>
+              <label class="practice-type-option">
+                <input type="radio" name="practice_type" value="calculation" />
+                <span>计算题</span>
+              </label>
+              <label class="practice-type-option">
+                <input type="radio" name="practice_type" value="mixed" checked />
+                <span>混合题型</span>
+              </label>
+            </div>
+          </fieldset>
+
           <button class="btn btn--primary" type="submit">提取文字并分析</button>
         </form>
 

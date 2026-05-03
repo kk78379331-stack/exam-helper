@@ -10,7 +10,12 @@ load_dotenv(BASE_DIR / ".env")
 
 from flask import Flask, jsonify, render_template, request
 
-from deepseek_client import MAX_INPUT_CHARS, DeepSeekError, analyze_course_text
+from deepseek_client import (
+    MAX_INPUT_CHARS,
+    DeepSeekError,
+    analyze_course_text,
+    normalize_practice_type,
+)
 
 # Vercel 等对请求体有限制：仅接收 JSON 文本，限制在 2MB 以内足够覆盖截断后的讲义文本
 app = Flask(__name__)
@@ -34,6 +39,7 @@ def api_analyze():
     data = request.get_json(silent=True) or {}
     text = data.get("text")
     source_name = data.get("source_name")
+    practice_type = normalize_practice_type(data.get("practice_type"))
 
     if not isinstance(text, str):
         return jsonify({"error": "缺少字段 text 或类型错误。"}), 400
@@ -53,7 +59,7 @@ def api_analyze():
         source_name = None
 
     try:
-        analysis = analyze_course_text(text)
+        analysis = analyze_course_text(text, practice_type=practice_type)
     except DeepSeekError as exc:
         return jsonify({"error": str(exc)}), 502
 
@@ -63,6 +69,7 @@ def api_analyze():
             "source_name": source_name,
             "analysis": analysis,
             "text_truncated": text_truncated,
+            "practice_type": practice_type,
         }
     )
 

@@ -97,6 +97,9 @@ function resetToUploadState() {
     analysisSection.hidden = true;
   }
   if (input) input.value = "";
+  form?.querySelectorAll('input[name="practice_type"]').forEach((el) => {
+    el.checked = el.value === "mixed";
+  });
 
   if (form) {
     form.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -120,9 +123,28 @@ function renderAnalysis(data, textTruncated, maxChars) {
   if (textTruncated) {
     html += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
   }
-  html += `<h2 class="analysis__heading">核心考点列表</h2><ol class="analysis-list">`;
-  for (const item of data.analysis.core_points) {
-    html += `<li>${escapeHtml(item)}</li>`;
+  const impClass = {
+    必考: "importance--must",
+    一般: "importance--normal",
+    了解: "importance--light",
+  };
+  html += `<h2 class="analysis__heading">核心考点列表</h2><ol class="analysis-list core-points-list">`;
+  for (const raw of data.analysis.core_points || []) {
+    let point;
+    let imp;
+    if (typeof raw === "string") {
+      point = raw;
+      imp = "一般";
+    } else {
+      point = raw.point || "";
+      imp = raw.importance || "一般";
+    }
+    if (!impClass[imp]) imp = "一般";
+    const ic = impClass[imp];
+    html += `<li class="core-point">`;
+    html += `<span class="core-point__tag ${ic}">【${escapeHtml(imp)}】</span>`;
+    html += `<span class="core-point__text">${escapeHtml(point)}</span>`;
+    html += `</li>`;
   }
   html += `</ol><h2 class="analysis__heading">难点解析</h2>`;
   html += `<div class="analysis__prose">${escapeHtml(data.analysis.difficult_analysis).replace(/\n/g, "<br />")}</div>`;
@@ -256,6 +278,9 @@ function init() {
 
     btn.textContent = "正在调用 DeepSeek 分析…";
 
+    const practiceType =
+      form.querySelector('input[name="practice_type"]:checked')?.value || "mixed";
+
     try {
       const res = await fetch(apiUrl, {
         method: "POST",
@@ -263,6 +288,7 @@ function init() {
         body: JSON.stringify({
           text: sendText,
           source_name: file.name,
+          practice_type: practiceType,
         }),
       });
       const payload = await res.json().catch(() => ({}));
