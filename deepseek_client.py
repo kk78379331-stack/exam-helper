@@ -57,6 +57,10 @@ JSON 的键必须严格为：
   - "importance": 只能是以下三个字面量之一（字符串本身勿加【】等符号）："必考"、"一般"、"了解"。
   【必考】数量与门槛（必须严格遵守）：importance 为 "必考" 的条目总数硬性上限为 5 条，不得超过。在讲义信息量正常时，请将必考控制在 3～5 条：仅保留本门课最核心、期末与平时测验中最高频考查、分值或命题概率明显最高的知识点；若讲义很短、真正够格的核心点不足 3 条，可按实际条数标注必考，禁止为凑数虚标。严禁把大半考点标为 "必考"；其余考点必须降为 "一般" 或 "了解"。
   "一般"=常见考点、值得掌握；"了解"=拓展、背景、次要或低频内容。
+- "concept_explanations": 数组，长度必须与 "core_points" 完全一致且顺序一一对应：第 i 条详解对应第 i 个考点。每一项必须是对象，且恰好包含三个字符串键（均用简体中文书写）：
+  - "what_it_is": 用最直白、最简单的语言说明「这个概念到底是什么、在讲什么」，假设读者完全没听过课也能读懂；避免堆砌术语，必要时用类比。
+  - "formulas_notes": 若该考点涉及公式或符号，请写出公式（可用 LaTeX 风格或纯文本如 E=mc²），并逐项说明每个符号/变量代表什么、常用单位是什么、在题目或应用中如何代入使用；若本考点基本无公式，则写一两句话说明「本概念以定性理解为主」或「无常用公式」即可，勿留空键。
+  - "life_example": 举一个贴近日常生活的短例子或小故事，帮助读者建立直觉（一两段即可）。
 - "difficult_analysis": 单个字符串，对重难点做解析，可含多段，使用 \\n 换行；
 - "practice_questions": 数组，每一项必须是对象，且必须包含以下字符串键：
   - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项）；
@@ -124,6 +128,50 @@ def _normalize_core_points(items: list[Any]) -> list[dict[str, str]]:
     return out
 
 
+def _empty_concept_row() -> dict[str, str]:
+    return {
+        "what_it_is": "",
+        "formulas_notes": "",
+        "life_example": "",
+    }
+
+
+def _normalize_concept_explanations(
+    core_len: int, items: Any
+) -> list[dict[str, str]]:
+    if not isinstance(items, list):
+        items = []
+
+    def one(x: Any) -> dict[str, str]:
+        if not isinstance(x, dict):
+            return _empty_concept_row()
+        return {
+            "what_it_is": str(
+                x.get("what_it_is")
+                or x.get("plain_explanation")
+                or x.get("是什么")
+                or ""
+            ).strip(),
+            "formulas_notes": str(
+                x.get("formulas_notes")
+                or x.get("formulas_and_variables")
+                or x.get("公式")
+                or ""
+            ).strip(),
+            "life_example": str(
+                x.get("life_example")
+                or x.get("everyday_example")
+                or x.get("例子")
+                or ""
+            ).strip(),
+        }
+
+    out: list[dict[str, str]] = [one(items[i]) for i in range(min(len(items), core_len))]
+    while len(out) < core_len:
+        out.append(_empty_concept_row())
+    return out[:core_len]
+
+
 def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[str, Any]:
     raw = _strip_code_fence(content)
     try:
@@ -138,18 +186,29 @@ def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[st
         except json.JSONDecodeError as exc:
             raise DeepSeekError("模型返回不是合法 JSON，请稍后重试。") from exc
 
-    for key in ("core_points", "difficult_analysis", "practice_questions"):
+    for key in (
+        "core_points",
+        "concept_explanations",
+        "difficult_analysis",
+        "practice_questions",
+    ):
         if key not in data:
             raise DeepSeekError(f"模型返回缺少字段：{key}")
 
     if not isinstance(data["core_points"], list):
         raise DeepSeekError("core_points 应为数组")
+    if not isinstance(data["concept_explanations"], list):
+        raise DeepSeekError("concept_explanations 应为数组")
     if not isinstance(data["difficult_analysis"], str):
         raise DeepSeekError("difficult_analysis 应为字符串")
     if not isinstance(data["practice_questions"], list):
         raise DeepSeekError("practice_questions 应为数组")
 
     data["core_points"] = _normalize_core_points(data["core_points"])
+    data["concept_explanations"] = _normalize_concept_explanations(
+        len(data["core_points"]),
+        data["concept_explanations"],
+    )
     data["difficult_analysis"] = str(data["difficult_analysis"]).strip()
     hint = normalize_practice_type(practice_type_hint)
     data["practice_questions"] = _normalize_practice_questions(

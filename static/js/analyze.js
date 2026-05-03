@@ -296,6 +296,49 @@ function resetToUploadState() {
   }
 }
 
+function buildConceptExplanationsSection(analysis) {
+  const points = analysis.core_points || [];
+  const items = analysis.concept_explanations;
+  if (!Array.isArray(items) || items.length === 0) {
+    return (
+      `<h2 class="analysis__heading">概念详解</h2>` +
+      `<p class="analysis__note">暂无概念详解数据（可能为旧版历史记录）。</p>`
+    );
+  }
+  let html = `<h2 class="analysis__heading">概念详解</h2><div class="concept-detail-list">`;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    const rawPoint = points[i];
+    const title =
+      typeof rawPoint === "string"
+        ? rawPoint
+        : rawPoint?.point || `考点 ${i + 1}`;
+    const w = it.what_it_is || it.plain_explanation || "";
+    const f = it.formulas_notes || it.formulas || "";
+    const ex = it.life_example || "";
+    const wHtml = w ? escapeHtml(w).replace(/\n/g, "<br />") : "（暂无）";
+    const fHtml = f ? escapeHtml(f).replace(/\n/g, "<br />") : "（暂无）";
+    const exHtml = ex ? escapeHtml(ex).replace(/\n/g, "<br />") : "（暂无）";
+    html += `<article class="concept-detail-card">`;
+    html += `<h3 class="concept-detail-card__title">${escapeHtml(title)}</h3>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">是什么（零基础版）</h4>`;
+    html += `<div class="concept-detail-block__body">${wHtml}</div>`;
+    html += `</section>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">公式与符号</h4>`;
+    html += `<div class="concept-detail-block__body">${fHtml}</div>`;
+    html += `</section>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
+    html += `<div class="concept-detail-block__body">${exHtml}</div>`;
+    html += `</section>`;
+    html += `</article>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed") {
   const section = document.getElementById("analysis-section");
   const resultSection = document.getElementById("result-section");
@@ -335,8 +378,10 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed") {
     html += `<span class="core-point__text">${escapeHtml(point)}</span>`;
     html += `</li>`;
   }
-  html += `</ol><h2 class="analysis__heading">难点解析</h2>`;
-  html += `<div class="analysis__prose">${escapeHtml(data.analysis.difficult_analysis).replace(/\n/g, "<br />")}</div>`;
+  html += `</ol>`;
+  html += buildConceptExplanationsSection(data.analysis);
+  html += `<h2 class="analysis__heading">难点解析</h2>`;
+  html += `<div class="analysis__prose">${escapeHtml(String(data.analysis.difficult_analysis ?? "")).replace(/\n/g, "<br />")}</div>`;
   html += `<h2 class="analysis__heading">同类型练习题</h2><ol class="analysis-list practice-list">`;
   const questions = data.analysis.practice_questions || [];
   for (const raw of questions) {

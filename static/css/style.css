@@ -435,6 +435,54 @@ body {
   margin-top: 0;
 }
 
+.concept-detail-list {
+  margin: 0 0 0.25rem;
+}
+
+.concept-detail-card {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.05rem;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.concept-detail-card:last-child {
+  margin-bottom: 0.5rem;
+}
+
+.concept-detail-card__title {
+  margin: 0 0 0.85rem;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.concept-detail-block {
+  margin-bottom: 0.75rem;
+}
+
+.concept-detail-block:last-child {
+  margin-bottom: 0;
+}
+
+.concept-detail-block__label {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--accent-hover);
+  letter-spacing: 0.03em;
+}
+
+.concept-detail-block__body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
 .analysis-list {
   margin: 0;
   padding-left: 1.35rem;
