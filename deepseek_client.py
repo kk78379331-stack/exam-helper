@@ -14,7 +14,9 @@ class DeepSeekError(Exception):
 
 MAX_INPUT_CHARS = 120_000
 
-VALID_PRACTICE_TYPES = frozenset({"mcq", "short_answer", "calculation", "mixed"})
+VALID_PRACTICE_TYPES = frozenset(
+    {"mcq", "true_false", "short_answer", "calculation", "mixed"}
+)
 
 VALID_IMPORTANCE = frozenset({"必考", "一般", "了解"})
 
@@ -31,7 +33,8 @@ IMPORTANCE_ALIASES = {
 # 写入用户消息，指导练习题格式（system 中保留 JSON 结构约定）
 PRACTICE_TYPE_INSTRUCTIONS: dict[str, str] = {
     "mcq": """【练习题型：选择题 MCQ】
-请生成单项选择题。题干、四个选项的正文、reference_answer、solution_approach 均须以**简体中文**为主（见系统对练习题语言的强制规则）；英文仅允许以「中文（English term）」括注专业术语。
+请生成单项选择题，**本批题目总数不得超过 10 道**。
+题干、四个选项的正文、reference_answer、solution_approach 均须以**简体中文**为主（见系统对练习题语言的强制规则）；英文仅允许以「中文（English term）」括注专业术语。
 每道题的 question 字段中必须包含：题干段落，以及换行后四个选项，格式严格为（每行一项）：
 A. …
 B. …
@@ -39,29 +42,40 @@ C. …
 D. …
 除下列公共字段外，每题必须设置 question_format 为 "mcq"，并必须设置 correct_option 为单个字母 A/B/C/D（大写）表示唯一正确选项。
 reference_answer 在选项字母之外，可用一两句话解释为何该选项正确；solution_approach 写完整解题思路（排除法或推导）。""",
+    "true_false": """【练习题型：判断题 True/False】
+请生成判断题，**本批题目总数不得超过 10 道**。
+每道题 question_format 必须为 "tf"；correct_option 必须为字符串 "TRUE" 或 "FALSE"（大写），表示唯一正确答案。
+question 为判断陈述（可含多句，用 \\n 换行）；**不要**在 question 里再写 True/False 选项行（前端固定展示 True / False 两个按钮）。
+reference_answer 用一两句话说明为何为真或为假；solution_approach 写完整辨析思路。
+题干、参考答案、解题思路须以简体中文书写（见系统强制语言规则）。""",
     "short_answer": """【练习题型：简答题】
-每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+请生成简答题，**本批题目总数不得超过 10 道**。
+每道题 question_format 必须为 "short_answer"，correct_option 必须为 ""。
 题干、参考答案、解题思路须以简体中文书写（见系统强制语言规则）。
 每道题的 question 为简答设问；reference_answer 为要点式或简短段落式参考答案；solution_approach 说明如何依据讲义组织答案、踩分点。""",
     "calculation": """【练习题型：计算题】
-每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+请生成计算题，**本批题目总数不得超过 10 道**。
+每道题 question_format 必须为 "calculation"，correct_option 必须为 ""。
 题干、文字说明、参考答案、解题思路须以简体中文书写（见系统强制语言规则）；公式与变量符号可用常规数学/物理记号。
 每道题的 question 须给出已知与待求；reference_answer 含公式、过程与数值结果（含单位）；solution_approach 说明公式选用与步骤要点。""",
     "mixed": """【练习题型：混合】（硬性结构，必须严格遵守）
-本批 practice_questions 中**必须同时包含**以下三类，**缺一不可**，且**禁止**整批题目几乎全是同一种题型：
-1）**至少一道** question_format 为 "mcq" 的单项选择题（题干 + A.–D. 四行选项 + correct_option）；
-2）**至少一道** question_format 为 "written" 的**简答题**（以文字阐述、列举、比较为主，不要求数值推导为主）；
-3）**至少一道** question_format 为 "written" 的**计算题**（须含明确已知量与待求量、公式代入或数值运算为主，与纯简答在形式上可区分）。
-若总题数为 N，则三类题目的数量宜**相对均衡**（例如 N=6 时 MCQ、简答、计算各约 2 道；允许小幅偏差，但**禁止**出现某一类仅 1 道而其余绝大部分集中在另一类的情况）。
+本批 practice_questions **总题数 N 须满足 4 ≤ N ≤ 10**，**不得超过 10 道**。
+须**同时包含以下四类子题型，每一类至少 1 道**，缺一不可；禁止整批几乎只剩某一类：
+1）question_format 为 "mcq" 的单项选择题（题干 + 换行后 A.–D. 四行选项 + correct_option 为 A/B/C/D）；
+2）question_format 为 "tf" 的判断题（题干为陈述；correct_option 为 "TRUE" 或 "FALSE"；不要在题干中再写 True/False 选项行）；
+3）question_format 为 "short_answer" 的简答题（以阐述、列举、比较为主，不以数值推导为主）；
+4）question_format 为 "calculation" 的计算题（须含明确已知量与待求量、公式或数值运算为主，与简答题可区分）。
+在 N 允许范围内四类数量宜**相对均衡**（例如 N=8 时每类约 2 道）；**禁止**某一类仅 1 道而其余绝大部分挤在另一类。
 每题均须含 question、reference_answer、solution_approach；全部文字说明须遵守系统对练习题中文主写的强制规则。""",
 }
 
 # 换一批练习题时追加到用户消息末尾，约束本批题型分布（与所选题型一致、不畸形集中）
 REROLL_DISTRIBUTION_APPEND: dict[str, str] = {
-    "mcq": "【本批换题】仍为纯选择题：各题应覆盖讲义中不同知识点或设问角度，避免本批多题高度同质或仅围绕同一结论反复提问；难度与干扰项设计宜有梯度。",
-    "short_answer": "【本批换题】仍为纯简答题：各题设问切入点、作答篇幅与得分点结构应有差异，避免多题几乎雷同；勿把本应属于计算推导的主干放在简答里凑数。",
-    "calculation": "【本批换题】仍为纯计算题：各题涉及的公式链、未知量类型与数值情境宜多样化，避免本批几乎全部同一套路或仅改数字的重复题。",
-    "mixed": "【本批换题】用户选择为**混合题型**：本批仍须**至少含 1 道 MCQ、1 道简答 written、1 道计算 written**（与首次生成规则相同），且三类数量宜**均衡**，禁止本批又倒向「几乎全是选择题」或「几乎全是简答而无计算」等畸形分布；设问须与上一批明显不同。",
+    "mcq": "【本批换题】仍为纯选择题：题目数不超过 10；各题应覆盖讲义中不同知识点或设问角度，避免本批多题高度同质或仅围绕同一结论反复提问；难度与干扰项设计宜有梯度。",
+    "true_false": "【本批换题】仍为纯判断题：题目数不超过 10；各题陈述角度、知识点应有差异，避免仅改否定词或同义反复。",
+    "short_answer": "【本批换题】仍为纯简答题：题目数不超过 10；各题设问切入点、作答篇幅与得分点结构应有差异，避免多题几乎雷同。",
+    "calculation": "【本批换题】仍为纯计算题：题目数不超过 10；各题涉及的公式链、未知量类型与数值情境宜多样化，避免本批几乎全部同一套路或仅改数字的重复题。",
+    "mixed": "【本批换题】用户选择为**混合题型**：本批仍须满足**至少 1 道 mcq、1 道 tf、1 道 short_answer、1 道 calculation**，总题数 4～10 道且不超过 10，四类数量宜均衡；设问须与上一批明显不同。",
 }
 
 SYSTEM_PROMPT = """你是面向留学生的课程复习助教。用户会提供课程讲义摘录（语言任意）以及练习题型要求（在用户消息开头）。
@@ -80,29 +94,28 @@ JSON 的键必须严格为：
 - "common_misconceptions": **字符串数组**，**恰好 2～3 条**（不得少于 2、不得多于 3），每条用一句话概括学生**最容易犯的典型错误**或**理解误区**（表述简洁、可独立阅读）。
 - "concept_comparison": 单个字符串，写 **1～2 组**本课中**易混淆的相似概念、术语或情形**之间的**核心区别**（可分点、可换行）；若讲义中可对比内容不足，也需基于材料做合理归纳，勿留空。
 - "practice_questions": 数组，每一项必须是对象，且必须包含以下字符串键：
-  - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项）；
-  - "reference_answer": 参考答案（MCQ 除选项字母外可附简短文字说明）；
+  - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项；判断题 tf 仅写陈述不写 True/False 选项行）；
+  - "reference_answer": 参考答案（MCQ/tf 可附简短文字说明）；
   - "solution_approach": 解题思路（关键步骤、知识点、理由；可含多段，用 \\n 换行）；
-  - "question_format": 取值为 "mcq" 或 "written"（"mcq"=单选题；"written"=简答、计算等非点击选项题）；
-  - "correct_option": 当 question_format 为 "mcq" 时，必须是 "A"、"B"、"C"、"D" 之一；为 "written" 时必须为空字符串 ""。
+  - "question_format": 取值为 "mcq"、"tf"、"short_answer" 或 "calculation"（"mcq"=四选一；"tf"=判断题；"short_answer"=简答；"calculation"=计算）；
+  - "correct_option": 当 question_format 为 "mcq" 时，必须是 "A"、"B"、"C"、"D" 之一；为 "tf" 时必须是 "TRUE" 或 "FALSE"；为 "short_answer" 或 "calculation" 时必须为空字符串 ""。
 
 【练习题语言（强制）】practice_questions 中每一题的 question、reference_answer、solution_approach 必须使用**简体中文**进行出题与解析（国际通用计量单位符号如 m、s、N 等可保留）。**禁止**用整句、整段英文来出题或写解析；**仅允许**在确有必要时用「中文术语（English term）」这一对中文全角括号的形式夹注专业英文名词，且括号外主体仍为中文。选择题 A.–D. 各选项的正文同样以中文为主，英文仅限括注术语。化学式、公认数学/物理符号、公式本身不受「必须中文」限制，但其前后文字说明仍须为中文。
 
-练习题数量适中（例如 3～8 题），每题必须同时给出上述五键，且内容具体、可核对。
-若用户消息中的题型为**混合（mixed）**，则 practice_questions 须满足该混合说明中的**硬性三类齐全与均衡**要求，不得用「几乎全是同一类」冒充混合。
+**练习题数量（硬性）**：practice_questions 数组长度**不得超过 10**；非混合题型时宜 3～10 道。若用户消息中的题型为**混合（mixed）**，则还须满足混合说明中的**四类各至少 1 道、总数 4～10 道**等全部硬性要求；其他单一题型时须符合该题型说明中的数量与结构要求。
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
 
 REGENERATE_PRACTICE_PROMPT = """你是面向留学生的课程复习助教。
 用户会再次提供**同一份**讲义摘录，且刚刚已完成过一批练习题；你的任务是根据该讲义**重新生成一整批全新的练习题**（设问角度、情境、选项或数值须与常见套路有明显变化，**禁止**仅对上一批题目做同义改写或微调）。
 只输出**一个** JSON 对象，不要 Markdown 代码围栏、不要任何前后说明文字。该对象**只包含一个键**：
-- "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq" 或 "written"）、correct_option（mcq 时为 A/B/C/D 之一，written 时为 ""）；题型与选项格式须符合用户消息开头的题型说明。
+- "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq"、"tf"、"short_answer" 或 "calculation"）、correct_option（mcq 为 A–D；tf 为 TRUE/FALSE；short_answer/calculation 为 ""）；题型须符合用户消息开头的题型说明。
 
 【练习题语言（强制）】须与主分析接口相同：question、reference_answer、solution_approach 一律以**简体中文**出题与解析；英文仅允许「中文（English term）」括注专业术语；禁止整段英文叙述。
 
-【换一批时的题型分布】本批题目须**严格服从**用户消息开头的题型说明；**不得**为求新而偏离用户所选题型。若用户选择**混合题型**：本批仍须含**至少一道 MCQ、至少一道简答、至少一道计算**，且三类数量宜**相对均衡**，禁止整批几乎只剩一种子题型。若用户选择**单一题型**（仅 MCQ / 仅简答 / 仅计算）：本批须**全部为**该题型，但**内部**仍须丰富设问角度与考查点，避免本批多题高度同质、或（在单一题型允许范围内）明显倒向某一固定套路。
+【换一批时的题型分布】本批题目须**严格服从**用户消息开头的题型说明；**不得**为求新而偏离用户所选题型。**题目总数不得超过 10 道。**若用户选择**混合题型**：本批仍须含**至少 1 道 mcq、1 道 tf、1 道 short_answer、1 道 calculation**，四类宜均衡。若用户选择**单一题型**：本批须全部为该题型，且设问角度多样化。
 
-练习题数量适中（例如 3～8 题），内容具体可作答。
+内容具体可作答。
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
 
@@ -289,7 +302,7 @@ def _normalize_practice_questions(
                         "question": q,
                         "reference_answer": "",
                         "solution_approach": "",
-                        "question_format": "written",
+                        "question_format": "short_answer",
                         "correct_option": "",
                     }
                 )
@@ -324,19 +337,72 @@ def _normalize_practice_questions(
         fmt_raw = str(item.get("question_format") or item.get("format") or "").strip().lower()
         if fmt_raw in ("multiple_choice", "choice"):
             fmt_raw = "mcq"
-        if fmt_raw not in ("mcq", "written"):
+        if fmt_raw in ("true_false", "tf", "判断", "判断题"):
+            fmt_raw = "tf"
+        if fmt_raw in ("short", "shortanswer", "short_answer", "简答"):
+            fmt_raw = "short_answer"
+        if fmt_raw in ("calc", "calculation", "计算"):
+            fmt_raw = "calculation"
+        if fmt_raw == "written":
+            fmt_raw = "written"  # resolve below
+
+        if fmt_raw not in ("mcq", "tf", "short_answer", "calculation", "written"):
             if practice_type_hint == "mcq":
                 fmt_raw = "mcq"
+            elif practice_type_hint == "true_false":
+                fmt_raw = "tf"
+            elif practice_type_hint == "short_answer":
+                fmt_raw = "short_answer"
+            elif practice_type_hint == "calculation":
+                fmt_raw = "calculation"
             else:
                 fmt_raw = "written"
 
-        correct = str(item.get("correct_option") or item.get("correct") or "").strip().upper()
+        if fmt_raw == "written":
+            if practice_type_hint == "calculation":
+                fmt_raw = "calculation"
+            elif practice_type_hint == "short_answer":
+                fmt_raw = "short_answer"
+            elif practice_type_hint == "mixed":
+                kind = str(
+                    item.get("exercise_kind")
+                    or item.get("sub_type")
+                    or item.get("题型")
+                    or ""
+                ).strip().lower()
+                if kind in ("calc", "calculation", "计算", "计算题"):
+                    fmt_raw = "calculation"
+                elif kind in ("short", "short_answer", "简答", "简答题"):
+                    fmt_raw = "short_answer"
+                else:
+                    fmt_raw = "short_answer"
+            else:
+                fmt_raw = "short_answer"
+
+        correct = str(item.get("correct_option") or item.get("correct") or "").strip()
+        correct_upper = correct.upper()
+
         if fmt_raw == "mcq":
-            if correct not in ("A", "B", "C", "D"):
+            cu = correct_upper
+            if cu not in ("A", "B", "C", "D"):
                 m = re.search(r"\b([ABCD])\b", ans, re.I)
+                cu = m.group(1).upper() if m else ""
+            if cu not in ("A", "B", "C", "D"):
+                fmt_raw = "short_answer"
+                correct = ""
+            else:
+                correct = cu
+        elif fmt_raw == "tf":
+            cu = correct_upper.replace(" ", "")
+            if cu in ("T", "TRUE", "对", "是"):
+                correct = "TRUE"
+            elif cu in ("F", "FALSE", "错", "否"):
+                correct = "FALSE"
+            else:
+                m = re.search(r"\b(TRUE|FALSE)\b", ans, re.I)
                 correct = m.group(1).upper() if m else ""
-            if correct not in ("A", "B", "C", "D"):
-                fmt_raw = "written"
+            if correct not in ("TRUE", "FALSE"):
+                fmt_raw = "short_answer"
                 correct = ""
         else:
             correct = ""
@@ -350,6 +416,10 @@ def _normalize_practice_questions(
                 "correct_option": correct,
             }
         )
+
+    _validate_practice_count(out)
+    if practice_type_hint == "mixed":
+        _validate_mixed_practice_questions(out)
     return out
 
 
@@ -445,6 +515,11 @@ def normalize_practice_type(value: Any) -> str:
     # 兼容前端可能传的大写
     aliases = {
         "mcq": "mcq",
+        "true_false": "true_false",
+        "truefalse": "true_false",
+        "tf": "true_false",
+        "判断": "true_false",
+        "判断题": "true_false",
         "short_answer": "short_answer",
         "shortanswer": "short_answer",
         "calculation": "calculation",
@@ -456,6 +531,30 @@ def normalize_practice_type(value: Any) -> str:
     if v in VALID_PRACTICE_TYPES:
         return v
     return "mixed"
+
+
+def _validate_practice_count(items: list[dict[str, str]]) -> None:
+    if len(items) > 10:
+        raise DeepSeekError("练习题超过 10 道上限，请重试。")
+
+
+def _validate_mixed_practice_questions(items: list[dict[str, str]]) -> None:
+    n_mcq = n_tf = n_short = n_calc = 0
+    for it in items:
+        f = str(it.get("question_format", "")).strip().lower()
+        if f == "mcq":
+            n_mcq += 1
+        elif f == "tf":
+            n_tf += 1
+        elif f == "short_answer":
+            n_short += 1
+        elif f == "calculation":
+            n_calc += 1
+    if n_mcq < 1 or n_tf < 1 or n_short < 1 or n_calc < 1:
+        raise DeepSeekError(
+            "混合题型须至少包含 1 道 mcq、1 道 tf、1 道 short_answer、1 道 calculation；"
+            "当前批次不满足，请重试。"
+        )
 
 
 def analyze_course_text(

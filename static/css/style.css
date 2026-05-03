@@ -781,8 +781,27 @@ body {
   line-height: 1.45;
 }
 
+.practice-batch__stats-line {
+  margin: 0.25rem 0 0;
+}
+
+.practice-batch__stats-line:first-child {
+  margin-top: 0;
+}
+
+.practice-item--written .js-self-master {
+  margin-left: 0.5rem;
+}
+
+.practice-item--written.is-self-mastered .js-self-master {
+  border-color: var(--success);
+  color: var(--success);
+}
+
 .practice-batch--stats-frozen .mcq-option,
-.practice-batch--stats-frozen .js-mcq-confirm {
+.practice-batch--stats-frozen .js-mcq-confirm,
+.practice-batch--stats-frozen .js-self-master,
+.practice-batch--stats-frozen .js-toggle-answer {
   pointer-events: none;
   opacity: 0.62;
   cursor: not-allowed;

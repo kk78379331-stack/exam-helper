@@ -170,38 +170,128 @@ function commitHistoryRename(id, rawValue) {
 function historyPracticeStatsLabel(item) {
   const stats = item.practice_stats;
   if (!Array.isArray(stats) || stats.length === 0) return "未作答";
-  let answered = 0;
-  let correct = 0;
+  let mcqC = 0;
+  let mcqA = 0;
+  let tfC = 0;
+  let tfA = 0;
+  let sm = 0;
+  let st = 0;
+  let cm = 0;
+  let ct = 0;
   for (const s of stats) {
-    answered += Number(s.answered) || 0;
-    correct += Number(s.correct) || 0;
+    if (s.mcq && typeof s.mcq === "object") {
+      mcqC += Number(s.mcq.correct) || 0;
+      mcqA += Number(s.mcq.answered) || 0;
+      tfC += Number(s.tf?.correct) || 0;
+      tfA += Number(s.tf?.answered) || 0;
+      sm += Number(s.short_answer?.mastered) || 0;
+      st += Number(s.short_answer?.total) || 0;
+      cm += Number(s.calculation?.mastered) || 0;
+      ct += Number(s.calculation?.total) || 0;
+    } else {
+      mcqC += Number(s.correct) || 0;
+      mcqA += Number(s.answered) || 0;
+    }
   }
-  if (answered === 0) return "未作答";
-  const pct = Math.round((correct / answered) * 100);
-  return `正确率 ${correct}/${answered}（${pct}%）`;
+  const objA = mcqA + tfA;
+  const objC = mcqC + tfC;
+  const subM = sm + cm;
+  const subT = st + ct;
+  if (objA === 0 && subM === 0) return "未作答";
+  const parts = [];
+  if (objA > 0) {
+    const pct = Math.round((objC / objA) * 100);
+    parts.push(`客观题正确率：${objC}/${objA}（${pct}%）`);
+  }
+  if (subT > 0) {
+    parts.push(`掌握程度：${subM}/${subT}题自评掌握`);
+  }
+  return parts.length ? parts.join(" · ") : "未作答";
 }
 
-function countMcqInPracticeQuestions(questions, practiceType) {
-  let n = 0;
+function countPracticeByKindInQuestions(questions, practiceType) {
+  const o = { mcq: 0, tf: 0, short_answer: 0, calculation: 0 };
   for (const raw of questions || []) {
-    if (shouldUseMcqInteractive(normalizePracticeRow(raw), practiceType)) n++;
+    const row = normalizePracticeRow(raw);
+    if (shouldUseMcqInteractive(row, practiceType)) o.mcq++;
+    else if (shouldUseTfInteractive(row, practiceType)) o.tf++;
+    else if (getWrittenKind(row, practiceType) === "calculation") o.calculation++;
+    else o.short_answer++;
   }
-  return n;
+  return o;
+}
+
+function buildEmptyBatchStatV2(questions, practiceType, batchNum) {
+  const c = countPracticeByKindInQuestions(questions, practiceType);
+  return {
+    batch: batchNum,
+    mcq: { correct: 0, answered: 0, total: c.mcq },
+    tf: { correct: 0, answered: 0, total: c.tf },
+    short_answer: { mastered: 0, total: c.short_answer },
+    calculation: { mastered: 0, total: c.calculation },
+  };
 }
 
 function buildInitialPracticeStats(analysis, practiceType) {
-  const mcq_total = countMcqInPracticeQuestions(analysis?.practice_questions, practiceType);
-  return [{ batch: 1, correct: 0, answered: 0, mcq_total }];
+  return [buildEmptyBatchStatV2(analysis?.practice_questions, practiceType, 1)];
 }
 
-function formatPracticeBatchStatsLine(correct, answered, mcqTotal) {
-  const mt = Number(mcqTotal) || 0;
-  const c = Number(correct) || 0;
-  const a = Number(answered) || 0;
-  if (mt === 0) return "本批无选择题";
-  if (a === 0) return `本批正确率：尚未作答（本批共 ${mt} 道选择题）`;
+function migrateBatchStatToV2(savedStat, questions, practiceType, batchIndex) {
+  const b = Number(batchIndex) || 1;
+  const empty = buildEmptyBatchStatV2(questions, practiceType, b);
+  if (savedStat && savedStat.mcq && typeof savedStat.mcq === "object") {
+    return {
+      batch: Number(savedStat.batch) || b,
+      mcq: { ...empty.mcq, ...savedStat.mcq },
+      tf: { ...empty.tf, ...(savedStat.tf || {}) },
+      short_answer: { ...empty.short_answer, ...(savedStat.short_answer || {}) },
+      calculation: { ...empty.calculation, ...(savedStat.calculation || {}) },
+    };
+  }
+  if (savedStat && (savedStat.mcq_total != null || savedStat.answered != null)) {
+    return {
+      ...empty,
+      mcq: {
+        correct: Number(savedStat.correct) || 0,
+        answered: Number(savedStat.answered) || 0,
+        total: Number(savedStat.mcq_total) || empty.mcq.total,
+      },
+    };
+  }
+  return empty;
+}
+
+function formatObjectiveLine(label, sub) {
+  const t = Number(sub.total) || 0;
+  const c = Number(sub.correct) || 0;
+  const a = Number(sub.answered) || 0;
+  if (t === 0) return null;
+  if (a === 0) return `${label}正确率：尚未作答（本批共 ${t} 道）`;
   const pct = Math.round((c / a) * 100);
-  return `本批正确率：${c}/${a}（${pct}%）`;
+  return `${label}正确率：${c}/${a}（${pct}%）`;
+}
+
+function formatMasteryLine(label, sub) {
+  const t = Number(sub.total) || 0;
+  const m = Number(sub.mastered) || 0;
+  if (t === 0) return null;
+  return `${label}掌握程度：${m}/${t}题自评掌握`;
+}
+
+function formatBatchStatsBlockHtml(statV2) {
+  const lines = [];
+  const o1 = formatObjectiveLine("选择题", statV2.mcq || {});
+  const o2 = formatObjectiveLine("判断题", statV2.tf || {});
+  const m1 = formatMasteryLine("简答题", statV2.short_answer || {});
+  const m2 = formatMasteryLine("计算题", statV2.calculation || {});
+  if (o1) lines.push(o1);
+  if (o2) lines.push(o2);
+  if (m1) lines.push(m1);
+  if (m2) lines.push(m2);
+  if (!lines.length) lines.push("本批暂无练习题。");
+  return lines
+    .map((line) => `<p class="practice-batch__stats-line">${escapeHtml(line)}</p>`)
+    .join("");
 }
 
 function collectPracticeStatsFromDom() {
@@ -212,20 +302,34 @@ function collectPracticeStatsFromDom() {
   sections.forEach((sec) => {
     const batch = Number.parseInt(sec.getAttribute("data-batch") || "0", 10);
     if (!batch) return;
-    const mcqs = sec.querySelectorAll(".practice-item--mcq");
-    let answered = 0;
-    let correct = 0;
-    mcqs.forEach((li) => {
-      if (!li.classList.contains("is-locked")) return;
-      answered++;
-      if (li.classList.contains("mcq-result--correct")) correct++;
-    });
-    out.push({
+    const stat = {
       batch,
-      mcq_total: mcqs.length,
-      correct,
-      answered,
+      mcq: { correct: 0, answered: 0, total: 0 },
+      tf: { correct: 0, answered: 0, total: 0 },
+      short_answer: { mastered: 0, total: 0 },
+      calculation: { mastered: 0, total: 0 },
+    };
+    sec.querySelectorAll(".practice-item--mcq:not(.practice-item--tf)").forEach((li) => {
+      stat.mcq.total++;
+      if (!li.classList.contains("is-locked")) return;
+      stat.mcq.answered++;
+      if (li.classList.contains("mcq-result--correct")) stat.mcq.correct++;
     });
+    sec.querySelectorAll(".practice-item--tf").forEach((li) => {
+      stat.tf.total++;
+      if (!li.classList.contains("is-locked")) return;
+      stat.tf.answered++;
+      if (li.classList.contains("mcq-result--correct")) stat.tf.correct++;
+    });
+    sec.querySelectorAll('.practice-item--written[data-written-kind="short_answer"]').forEach((li) => {
+      stat.short_answer.total++;
+      if (li.classList.contains("is-self-mastered")) stat.short_answer.mastered++;
+    });
+    sec.querySelectorAll('.practice-item--written[data-written-kind="calculation"]').forEach((li) => {
+      stat.calculation.total++;
+      if (li.classList.contains("is-self-mastered")) stat.calculation.mastered++;
+    });
+    out.push(stat);
   });
   out.sort((x, y) => x.batch - y.batch);
   return out;
@@ -247,15 +351,19 @@ function persistAllPracticeStatsToHistory() {
 function updatePracticeBatchStatsFooter(batchEl) {
   const footer = batchEl.querySelector(".js-batch-stats");
   if (!footer) return;
-  const mcqs = batchEl.querySelectorAll(".practice-item--mcq");
-  let answered = 0;
-  let correct = 0;
-  mcqs.forEach((li) => {
-    if (!li.classList.contains("is-locked")) return;
-    answered++;
-    if (li.classList.contains("mcq-result--correct")) correct++;
-  });
-  footer.textContent = formatPracticeBatchStatsLine(correct, answered, mcqs.length);
+  const stat = collectPracticeStatsFromDom().find((s) => s.batch === Number(batchEl.dataset.batch));
+  if (!stat) return;
+  footer.innerHTML = formatBatchStatsBlockHtml(stat);
+}
+
+function batchStatHasProgress(s) {
+  if (!s || typeof s !== "object") return false;
+  if (Number(s.answered) > 0) return true;
+  if (s.mcq && Number(s.mcq.answered) > 0) return true;
+  if (s.tf && Number(s.tf.answered) > 0) return true;
+  if (s.short_answer && Number(s.short_answer.mastered) > 0) return true;
+  if (s.calculation && Number(s.calculation.mastered) > 0) return true;
+  return false;
 }
 
 function extendPracticeStatsForNewBatch(batchNum, questions, practiceType) {
@@ -266,12 +374,7 @@ function extendPracticeStatsForNewBatch(batchNum, questions, practiceType) {
   const prev = Array.isArray(list[idx].practice_stats) ? list[idx].practice_stats : [];
   const next = [
     ...prev.filter((s) => Number(s.batch) !== batchNum),
-    {
-      batch: batchNum,
-      correct: 0,
-      answered: 0,
-      mcq_total: countMcqInPracticeQuestions(questions, practiceType),
-    },
+    buildEmptyBatchStatV2(questions, practiceType, batchNum),
   ];
   next.sort((a, b) => Number(a.batch) - Number(b.batch));
   list[idx].practice_stats = next;
@@ -391,23 +494,43 @@ function setSourceFilenameDisplay(sourceName) {
     .join("");
 }
 
+function normalizePracticeFormat(fmt) {
+  const f = String(fmt || "").trim().toLowerCase();
+  if (f === "true_false" || f === "tf" || f === "判断" || f === "判断题") return "tf";
+  if (f === "mcq" || f === "choice") return "mcq";
+  if (f === "calculation" || f === "calc" || f === "计算" || f === "计算题") return "calculation";
+  if (f === "short_answer" || f === "short" || f === "简答" || f === "简答题") return "short_answer";
+  if (f === "written" || f === "") return "written";
+  return f;
+}
+
 function normalizePracticeRow(raw) {
   if (typeof raw === "string") {
     return {
       question: raw,
       reference_answer: "",
       solution_approach: "",
-      question_format: "written",
+      question_format: "short_answer",
       correct_option: "",
     };
   }
+  let question_format = normalizePracticeFormat(raw.question_format);
+  if (question_format === "written") question_format = "short_answer";
   return {
     question: raw.question || "",
     reference_answer: raw.reference_answer || "",
     solution_approach: raw.solution_approach || "",
-    question_format: String(raw.question_format || "written").toLowerCase(),
-    correct_option: raw.correct_option || "",
+    question_format,
+    correct_option: raw.correct_option != null ? String(raw.correct_option) : "",
   };
+}
+
+function getWrittenKind(row, practiceType) {
+  const fmt = (row.question_format || "").toLowerCase();
+  if (fmt === "calculation") return "calculation";
+  if (fmt === "short_answer") return "short_answer";
+  if (practiceType === "calculation") return "calculation";
+  return "short_answer";
 }
 
 /** 从题干+选项文本中解析 MCQ；失败返回 null */
@@ -437,14 +560,28 @@ function normalizeCorrectOption(referenceAnswer, correctOption) {
   return m ? m[1].toUpperCase() : "";
 }
 
+function normalizeTfCorrect(referenceAnswer, correctOption) {
+  let c = String(correctOption || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (c === "TRUE" || c === "T" || c === "对" || c === "是") return "TRUE";
+  if (c === "FALSE" || c === "F" || c === "错" || c === "否") return "FALSE";
+  const m = String(referenceAnswer || "").match(/\b(TRUE|FALSE)\b/i);
+  return m ? m[1].toUpperCase() : "";
+}
+
 function shouldUseMcqInteractive(row, practiceType) {
+  const fmt = (row.question_format || "").toLowerCase();
+  if (fmt !== "mcq") return false;
   const correct = normalizeCorrectOption(row.reference_answer, row.correct_option);
   const parsed = parseMcqBlocks(row.question || "");
   if (!correct || !parsed) return false;
+  return true;
+}
+
+function shouldUseTfInteractive(row, practiceType) {
   const fmt = (row.question_format || "").toLowerCase();
-  if (fmt === "written") return false;
-  if (fmt === "mcq") return true;
-  return practiceType === "mcq";
+  if (fmt !== "tf") return false;
+  const correct = normalizeTfCorrect(row.reference_answer, row.correct_option);
+  return correct === "TRUE" || correct === "FALSE";
 }
 
 function buildPracticeItemHtml(row, practiceType) {
@@ -455,12 +592,22 @@ function buildPracticeItemHtml(row, practiceType) {
     ? escapeHtml(row.solution_approach).replace(/\n/g, "<br />")
     : "（暂无）";
 
-  if (!shouldUseMcqInteractive(row, practiceType)) {
+  if (shouldUseTfInteractive(row, practiceType)) {
+    const correct = normalizeTfCorrect(row.reference_answer, row.correct_option);
+    const optsHtml =
+      `<li><button type="button" class="mcq-option" data-key="TRUE" aria-pressed="false">` +
+      `<span class="mcq-option__key">T</span>` +
+      `<span class="mcq-option__text">True</span></button></li>` +
+      `<li><button type="button" class="mcq-option" data-key="FALSE" aria-pressed="false">` +
+      `<span class="mcq-option__key">F</span>` +
+      `<span class="mcq-option__text">False</span></button></li>`;
     return (
-      `<li class="practice-item practice-item--written">` +
+      `<li class="practice-item practice-item--mcq practice-item--tf" data-correct="${correct}">` +
       `<div class="practice-item__stem">${escapeHtml(row.question)}</div>` +
-      `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>` +
-      `<div class="practice-item__detail" hidden>` +
+      `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
+      `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
+      `<div class="practice-item__mcq-feedback" hidden>` +
+      `<p class="mcq-feedback__summary"></p>` +
       `<p class="practice-item__label">参考答案</p>` +
       `<div class="practice-item__body">${ansHtml}</div>` +
       `<p class="practice-item__label">解题思路</p>` +
@@ -469,25 +616,41 @@ function buildPracticeItemHtml(row, practiceType) {
     );
   }
 
-  const correct = normalizeCorrectOption(row.reference_answer, row.correct_option);
-  const parsed = parseMcqBlocks(row.question);
-  const optsHtml = parsed.options
-    .map(
-      (o) =>
-        `<li><button type="button" class="mcq-option" data-key="${o.key}" aria-pressed="false">` +
-        `<span class="mcq-option__key">${o.key}.</span>` +
-        `<span class="mcq-option__text">${escapeHtml(o.text)}</span>` +
-        `</button></li>`
-    )
-    .join("");
+  if (shouldUseMcqInteractive(row, practiceType)) {
+    const correct = normalizeCorrectOption(row.reference_answer, row.correct_option);
+    const parsed = parseMcqBlocks(row.question);
+    const optsHtml = parsed.options
+      .map(
+        (o) =>
+          `<li><button type="button" class="mcq-option" data-key="${o.key}" aria-pressed="false">` +
+          `<span class="mcq-option__key">${o.key}.</span>` +
+          `<span class="mcq-option__text">${escapeHtml(o.text)}</span>` +
+          `</button></li>`
+      )
+      .join("");
 
+    return (
+      `<li class="practice-item practice-item--mcq" data-correct="${correct}">` +
+      `<div class="practice-item__stem">${escapeHtml(parsed.stem)}</div>` +
+      `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
+      `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
+      `<div class="practice-item__mcq-feedback" hidden>` +
+      `<p class="mcq-feedback__summary"></p>` +
+      `<p class="practice-item__label">参考答案</p>` +
+      `<div class="practice-item__body">${ansHtml}</div>` +
+      `<p class="practice-item__label">解题思路</p>` +
+      `<div class="practice-item__body">${solHtml}</div>` +
+      `</div></li>`
+    );
+  }
+
+  const wk = getWrittenKind(row, practiceType);
   return (
-    `<li class="practice-item practice-item--mcq" data-correct="${correct}">` +
-    `<div class="practice-item__stem">${escapeHtml(parsed.stem)}</div>` +
-    `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
-    `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
-    `<div class="practice-item__mcq-feedback" hidden>` +
-    `<p class="mcq-feedback__summary"></p>` +
+    `<li class="practice-item practice-item--written" data-written-kind="${wk}">` +
+    `<div class="practice-item__stem">${escapeHtml(row.question)}</div>` +
+    `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>` +
+    `<button type="button" class="btn btn--secondary btn--small js-self-master" aria-pressed="false">我已掌握</button>` +
+    `<div class="practice-item__detail" hidden>` +
     `<p class="practice-item__label">参考答案</p>` +
     `<div class="practice-item__body">${ansHtml}</div>` +
     `<p class="practice-item__label">解题思路</p>` +
@@ -650,16 +813,8 @@ function buildPracticeBatchSectionHtml(
 ) {
   const expandedCls = expandedBatch ? " is-expanded" : "";
   const ae = expandedBatch ? "true" : "false";
-  const mcqTotal = countMcqInPracticeQuestions(questions, practiceType);
-  let correct = 0;
-  let answered = 0;
-  let mt = mcqTotal;
-  if (savedStat && typeof savedStat === "object") {
-    correct = Number(savedStat.correct) || 0;
-    answered = Number(savedStat.answered) || 0;
-    if (savedStat.mcq_total != null) mt = Number(savedStat.mcq_total) || mcqTotal;
-  }
-  const statsLine = formatPracticeBatchStatsLine(correct, answered, mt);
+  const v2 = migrateBatchStatToV2(savedStat, questions, practiceType, batchIndex);
+  const statsHtml = formatBatchStatsBlockHtml(v2);
   const frozenCls = statsFrozen ? " practice-batch--stats-frozen" : "";
   return (
     `<section class="accordion__item practice-batch${expandedCls}${frozenCls}" data-batch="${batchIndex}">` +
@@ -671,7 +826,7 @@ function buildPracticeBatchSectionHtml(
     `<ol class="analysis-list practice-list">` +
     buildPracticeOlInnerHtml(questions, practiceType) +
     `</ol>` +
-    `<p class="practice-batch__stats js-batch-stats">${escapeHtml(statsLine)}</p>` +
+    `<div class="practice-batch__stats js-batch-stats">${statsHtml}</div>` +
     `</div></section>`
   );
 }
@@ -681,7 +836,7 @@ function buildPracticeInnerHtml(analysis, practiceType, showReroll, practiceStat
   const freeze = showReroll === false;
   let html = `<div id="practice-root"><div id="practice-batches">`;
   const b1 = statsArr.find((s) => Number(s.batch) === 1) || null;
-  const b1Frozen = freeze && b1 && Number(b1.answered) > 0;
+  const b1Frozen = freeze && batchStatHasProgress(b1);
   html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType, true, b1, b1Frozen);
   html += `</div>`;
   if (showReroll) {
@@ -932,6 +1087,22 @@ function init() {
         accHeader.setAttribute("aria-expanded", expanded ? "true" : "false");
         return;
       }
+    }
+
+    const selfMaster = e.target.closest(".js-self-master");
+    if (selfMaster) {
+      if (selfMaster.closest(".practice-batch--stats-frozen")) return;
+      const item = selfMaster.closest(".practice-item--written");
+      if (!item) return;
+      const on = item.classList.toggle("is-self-mastered");
+      selfMaster.setAttribute("aria-pressed", on ? "true" : "false");
+      selfMaster.textContent = on ? "取消掌握" : "我已掌握";
+      const batch = item.closest(".practice-batch");
+      if (batch) {
+        updatePracticeBatchStatsFooter(batch);
+        persistAllPracticeStatsToHistory();
+      }
+      return;
     }
 
     const rerollBtn = e.target.closest(".js-reroll-practice");
