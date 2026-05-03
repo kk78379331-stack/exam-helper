@@ -31,18 +31,22 @@ IMPORTANCE_ALIASES = {
 # 写入用户消息，指导练习题格式（system 中保留 JSON 结构约定）
 PRACTICE_TYPE_INSTRUCTIONS: dict[str, str] = {
     "mcq": """【练习题型：选择题 MCQ】
-请生成单项选择题。每道题的 question 字段中必须包含：题干段落，以及换行后四个选项，格式严格为：
+请生成单项选择题。每道题的 question 字段中必须包含：题干段落，以及换行后四个选项，格式严格为（每行一项）：
 A. …
 B. …
 C. …
 D. …
-reference_answer 写明正确选项字母（如「B」），并可用一两句话说明为何正确；solution_approach 写解题思路（可用排除法或推导正确项）。""",
+除下列公共字段外，每题必须设置 question_format 为 "mcq"，并必须设置 correct_option 为单个字母 A/B/C/D（大写）表示唯一正确选项。
+reference_answer 在选项字母之外，可用一两句话解释为何该选项正确；solution_approach 写完整解题思路（排除法或推导）。""",
     "short_answer": """【练习题型：简答题】
-每道题的 question 为简答设问，表述清晰；reference_answer 为条理清楚的要点式或简短段落式参考答案（覆盖得分点）；solution_approach 说明如何依据讲义组织答案、常见踩分点。""",
+每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+每道题的 question 为简答设问；reference_answer 为要点式或简短段落式参考答案；solution_approach 说明如何依据讲义组织答案、踩分点。""",
     "calculation": """【练习题型：计算题】
-每道题的 question 须给出已知条件与待求量（必要时说明单位或近似）；reference_answer 给出主要公式、代入过程与数值结果（含单位）；solution_approach 说明选用公式理由与计算步骤要点。""",
+每道题 question_format 必须为 "written"，correct_option 必须为 ""。
+每道题的 question 须给出已知与待求；reference_answer 含公式、过程与数值结果（含单位）；solution_approach 说明公式选用与步骤要点。""",
     "mixed": """【练习题型：混合】
-请在 practice_questions 中合理搭配至少两种题型（可含选择题 MCQ、简答题、计算题等）。每道小题的实际形式须在 question 中体现；reference_answer 与 solution_approach 须与该小题题型一致。""",
+请在 practice_questions 中合理搭配至少两种题型。客观单选题对应 question_format 为 "mcq"，须含 A.–D. 四行选项及 correct_option（A–D）；简答、计算等主观题对应 question_format 为 "written"，correct_option 为 ""。
+每题均须含 question、reference_answer、solution_approach。""",
 }
 
 SYSTEM_PROMPT = """你是面向留学生的课程复习助教。用户会提供课程讲义摘录（语言任意）以及练习题型要求（在用户消息开头）。
@@ -54,12 +58,14 @@ JSON 的键必须严格为：
   含义：必考=极可能在考试中出现或分值高；一般=常见考点；了解=拓展、背景或次要内容。
   请根据讲义合理分配比例，使「必考」条目精炼、有区分度。
 - "difficult_analysis": 单个字符串，对重难点做解析，可含多段，使用 \\n 换行；
-- "practice_questions": 数组，每一项必须是对象，且恰好包含三个键（字符串）：
-  - "question": 题干（格式须符合用户消息中的题型要求）；
-  - "reference_answer": 参考答案；
-  - "solution_approach": 解题思路（关键步骤、知识点、理由；可含多段，用 \\n 换行）。
+- "practice_questions": 数组，每一项必须是对象，且必须包含以下字符串键：
+  - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项）；
+  - "reference_answer": 参考答案（MCQ 除选项字母外可附简短文字说明）；
+  - "solution_approach": 解题思路（关键步骤、知识点、理由；可含多段，用 \\n 换行）；
+  - "question_format": 取值为 "mcq" 或 "written"（"mcq"=单选题；"written"=简答、计算等非点击选项题）；
+  - "correct_option": 当 question_format 为 "mcq" 时，必须是 "A"、"B"、"C"、"D" 之一；为 "written" 时必须为空字符串 ""。
 
-练习题数量适中（例如 3～8 题），每题必须同时给出 question、reference_answer、solution_approach，且内容具体、可核对。
+练习题数量适中（例如 3～8 题），每题必须同时给出上述五键，且内容具体、可核对。
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
 
@@ -118,7 +124,7 @@ def _normalize_core_points(items: list[Any]) -> list[dict[str, str]]:
     return out
 
 
-def parse_model_json(content: str) -> dict[str, Any]:
+def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[str, Any]:
     raw = _strip_code_fence(content)
     try:
         data = json.loads(raw)
@@ -145,11 +151,16 @@ def parse_model_json(content: str) -> dict[str, Any]:
 
     data["core_points"] = _normalize_core_points(data["core_points"])
     data["difficult_analysis"] = str(data["difficult_analysis"]).strip()
-    data["practice_questions"] = _normalize_practice_questions(data["practice_questions"])
+    hint = normalize_practice_type(practice_type_hint)
+    data["practice_questions"] = _normalize_practice_questions(
+        data["practice_questions"], hint
+    )
     return data
 
 
-def _normalize_practice_questions(items: list[Any]) -> list[dict[str, str]]:
+def _normalize_practice_questions(
+    items: list[Any], practice_type_hint: str = "mixed"
+) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for i, item in enumerate(items):
         if isinstance(item, str):
@@ -160,6 +171,8 @@ def _normalize_practice_questions(items: list[Any]) -> list[dict[str, str]]:
                         "question": q,
                         "reference_answer": "",
                         "solution_approach": "",
+                        "question_format": "written",
+                        "correct_option": "",
                     }
                 )
             continue
@@ -190,11 +203,33 @@ def _normalize_practice_questions(items: list[Any]) -> list[dict[str, str]]:
             or ""
         ).strip()
 
+        fmt_raw = str(item.get("question_format") or item.get("format") or "").strip().lower()
+        if fmt_raw in ("multiple_choice", "choice"):
+            fmt_raw = "mcq"
+        if fmt_raw not in ("mcq", "written"):
+            if practice_type_hint == "mcq":
+                fmt_raw = "mcq"
+            else:
+                fmt_raw = "written"
+
+        correct = str(item.get("correct_option") or item.get("correct") or "").strip().upper()
+        if fmt_raw == "mcq":
+            if correct not in ("A", "B", "C", "D"):
+                m = re.search(r"\b([ABCD])\b", ans, re.I)
+                correct = m.group(1).upper() if m else ""
+            if correct not in ("A", "B", "C", "D"):
+                fmt_raw = "written"
+                correct = ""
+        else:
+            correct = ""
+
         out.append(
             {
                 "question": q,
                 "reference_answer": ans,
                 "solution_approach": sol,
+                "question_format": fmt_raw,
+                "correct_option": correct,
             }
         )
     return out
@@ -262,4 +297,4 @@ def analyze_course_text(
     if not choice:
         raise DeepSeekError("模型未返回内容。")
 
-    return parse_model_json(choice)
+    return parse_model_json(choice, practice_type_hint=ptype)

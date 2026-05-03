@@ -80,6 +80,111 @@ function clearFlash() {
   if (ul) ul.innerHTML = "";
 }
 
+function normalizePracticeRow(raw) {
+  if (typeof raw === "string") {
+    return {
+      question: raw,
+      reference_answer: "",
+      solution_approach: "",
+      question_format: "written",
+      correct_option: "",
+    };
+  }
+  return {
+    question: raw.question || "",
+    reference_answer: raw.reference_answer || "",
+    solution_approach: raw.solution_approach || "",
+    question_format: String(raw.question_format || "written").toLowerCase(),
+    correct_option: raw.correct_option || "",
+  };
+}
+
+/** 从题干+选项文本中解析 MCQ；失败返回 null */
+function parseMcqBlocks(questionText) {
+  const lines = questionText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const options = [];
+  const stemLines = [];
+  for (const line of lines) {
+    const m = line.match(/^([A-Da-d])\s*[\.\．、:：\)]\s*(.+)$/);
+    if (m) {
+      options.push({ key: m[1].toUpperCase(), text: m[2].trim() });
+    } else if (options.length === 0) {
+      stemLines.push(line);
+    }
+  }
+  if (options.length < 2) return null;
+  return { stem: stemLines.join("\n"), options };
+}
+
+function normalizeCorrectOption(referenceAnswer, correctOption) {
+  let c = String(correctOption || "").trim().toUpperCase();
+  if (/^[ABCD]$/.test(c)) return c;
+  const m = String(referenceAnswer || "").match(/\b([ABCD])\b/i);
+  return m ? m[1].toUpperCase() : "";
+}
+
+function shouldUseMcqInteractive(row, practiceType) {
+  const correct = normalizeCorrectOption(row.reference_answer, row.correct_option);
+  const parsed = parseMcqBlocks(row.question || "");
+  if (!correct || !parsed) return false;
+  const fmt = (row.question_format || "").toLowerCase();
+  if (fmt === "written") return false;
+  if (fmt === "mcq") return true;
+  return practiceType === "mcq";
+}
+
+function buildPracticeItemHtml(row, practiceType) {
+  const ansHtml = row.reference_answer
+    ? escapeHtml(row.reference_answer).replace(/\n/g, "<br />")
+    : "（暂无）";
+  const solHtml = row.solution_approach
+    ? escapeHtml(row.solution_approach).replace(/\n/g, "<br />")
+    : "（暂无）";
+
+  if (!shouldUseMcqInteractive(row, practiceType)) {
+    return (
+      `<li class="practice-item practice-item--written">` +
+      `<div class="practice-item__stem">${escapeHtml(row.question)}</div>` +
+      `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>` +
+      `<div class="practice-item__detail" hidden>` +
+      `<p class="practice-item__label">参考答案</p>` +
+      `<div class="practice-item__body">${ansHtml}</div>` +
+      `<p class="practice-item__label">解题思路</p>` +
+      `<div class="practice-item__body">${solHtml}</div>` +
+      `</div></li>`
+    );
+  }
+
+  const correct = normalizeCorrectOption(row.reference_answer, row.correct_option);
+  const parsed = parseMcqBlocks(row.question);
+  const optsHtml = parsed.options
+    .map(
+      (o) =>
+        `<li><button type="button" class="mcq-option" data-key="${o.key}" aria-pressed="false">` +
+        `<span class="mcq-option__key">${o.key}.</span>` +
+        `<span class="mcq-option__text">${escapeHtml(o.text)}</span>` +
+        `</button></li>`
+    )
+    .join("");
+
+  return (
+    `<li class="practice-item practice-item--mcq" data-correct="${correct}">` +
+    `<div class="practice-item__stem">${escapeHtml(parsed.stem)}</div>` +
+    `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
+    `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
+    `<div class="practice-item__mcq-feedback" hidden>` +
+    `<p class="mcq-feedback__summary">正确选项为 <strong>${correct}</strong>。以下为参考答案与解题思路。</p>` +
+    `<p class="practice-item__label">参考答案</p>` +
+    `<div class="practice-item__body">${ansHtml}</div>` +
+    `<p class="practice-item__label">解题思路</p>` +
+    `<div class="practice-item__body">${solHtml}</div>` +
+    `</div></li>`
+  );
+}
+
 function resetToUploadState() {
   clearFlash();
   const toolbar = document.getElementById("result-toolbar");
@@ -107,7 +212,7 @@ function resetToUploadState() {
   }
 }
 
-function renderAnalysis(data, textTruncated, maxChars) {
+function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed") {
   const section = document.getElementById("analysis-section");
   const resultSection = document.getElementById("result-section");
   const nameEl = document.getElementById("source-filename");
@@ -151,29 +256,7 @@ function renderAnalysis(data, textTruncated, maxChars) {
   html += `<h2 class="analysis__heading">同类型练习题</h2><ol class="analysis-list practice-list">`;
   const questions = data.analysis.practice_questions || [];
   for (const raw of questions) {
-    const row =
-      typeof raw === "string"
-        ? { question: raw, reference_answer: "", solution_approach: "" }
-        : {
-            question: raw.question || "",
-            reference_answer: raw.reference_answer || "",
-            solution_approach: raw.solution_approach || "",
-          };
-    const ansHtml = row.reference_answer
-      ? escapeHtml(row.reference_answer).replace(/\n/g, "<br />")
-      : "（暂无）";
-    const solHtml = row.solution_approach
-      ? escapeHtml(row.solution_approach).replace(/\n/g, "<br />")
-      : "（暂无）";
-    html += `<li class="practice-item">`;
-    html += `<div class="practice-item__stem">${escapeHtml(row.question)}</div>`;
-    html += `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>`;
-    html += `<div class="practice-item__detail" hidden>`;
-    html += `<p class="practice-item__label">参考答案</p>`;
-    html += `<div class="practice-item__body">${ansHtml}</div>`;
-    html += `<p class="practice-item__label">解题思路</p>`;
-    html += `<div class="practice-item__body">${solHtml}</div>`;
-    html += `</div></li>`;
+    html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType);
   }
   html += `</ol>`;
 
@@ -205,6 +288,49 @@ function init() {
   if (!form) return;
 
   document.getElementById("analysis-section")?.addEventListener("click", (e) => {
+    const mcqBtn = e.target.closest(".mcq-option");
+    if (mcqBtn) {
+      const item = mcqBtn.closest(".practice-item--mcq");
+      if (!item || item.classList.contains("is-locked")) return;
+      item.querySelectorAll(".mcq-option").forEach((b) => {
+        b.classList.remove("is-selected");
+        b.setAttribute("aria-pressed", "false");
+      });
+      mcqBtn.classList.add("is-selected");
+      mcqBtn.setAttribute("aria-pressed", "true");
+      return;
+    }
+
+    const confirmMcq = e.target.closest(".js-mcq-confirm");
+    if (confirmMcq) {
+      const item = confirmMcq.closest(".practice-item--mcq");
+      if (!item || item.classList.contains("is-locked")) return;
+      const correct = item.getAttribute("data-correct") || "";
+      const selected = item.querySelector(".mcq-option.is-selected");
+      if (!selected) {
+        showFlash("error", "请先选择一个选项。");
+        return;
+      }
+      const pick = selected.getAttribute("data-key") || "";
+      item.classList.add("is-locked");
+
+      if (pick === correct) {
+        item.querySelectorAll(".mcq-option").forEach((b) => {
+          b.disabled = true;
+          if (b === selected) b.classList.add("is-correct");
+        });
+      } else {
+        selected.classList.add("is-wrong");
+        item.querySelectorAll(".mcq-option").forEach((b) => {
+          b.disabled = true;
+          if (b.getAttribute("data-key") === correct) b.classList.add("is-correct");
+        });
+        item.querySelector(".practice-item__mcq-feedback")?.removeAttribute("hidden");
+      }
+      confirmMcq.disabled = true;
+      return;
+    }
+
     const btn = e.target.closest(".js-toggle-answer");
     if (!btn) return;
     const item = btn.closest(".practice-item");
@@ -305,7 +431,8 @@ function init() {
       renderAnalysis(
         { source_name: payload.source_name, analysis: payload.analysis },
         textTruncated,
-        maxChars
+        maxChars,
+        payload.practice_type || practiceType
       );
     } catch (err) {
       showFlash("error", err.message || "网络错误，请稍后重试。");

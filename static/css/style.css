@@ -318,6 +318,115 @@ body {
   line-height: 1.55;
 }
 
+.mcq-options {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.mcq-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.mcq-option:hover:not(:disabled) {
+  border-color: rgba(91, 140, 255, 0.45);
+  background: rgba(91, 140, 255, 0.08);
+}
+
+.mcq-option.is-selected:not(:disabled) {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(91, 140, 255, 0.35);
+}
+
+.mcq-option.is-correct {
+  border-color: var(--success) !important;
+  background: rgba(62, 207, 142, 0.2) !important;
+  color: var(--text);
+}
+
+.mcq-option.is-wrong {
+  border-color: var(--error) !important;
+  background: rgba(255, 107, 107, 0.16) !important;
+}
+
+.mcq-option:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.mcq-option__key {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--accent-hover);
+  min-width: 1.35rem;
+}
+
+.mcq-option__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn--confirm {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1px solid rgba(62, 207, 142, 0.45);
+  background: rgba(62, 207, 142, 0.15);
+  color: var(--success);
+  cursor: pointer;
+}
+
+.btn--confirm:hover:not(:disabled) {
+  background: rgba(62, 207, 142, 0.25);
+}
+
+.btn--confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.practice-item__mcq-feedback {
+  margin-top: 0.65rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.mcq-feedback__summary {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.mcq-feedback__summary strong {
+  color: var(--success);
+}
+
 .btn--answer {
   display: inline-flex;
   align-items: center;
