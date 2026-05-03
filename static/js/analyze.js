@@ -176,7 +176,7 @@ function buildPracticeItemHtml(row, practiceType) {
     `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
     `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
     `<div class="practice-item__mcq-feedback" hidden>` +
-    `<p class="mcq-feedback__summary">正确选项为 <strong>${correct}</strong>。以下为参考答案与解题思路。</p>` +
+    `<p class="mcq-feedback__summary"></p>` +
     `<p class="practice-item__label">参考答案</p>` +
     `<div class="practice-item__body">${ansHtml}</div>` +
     `<p class="practice-item__label">解题思路</p>` +
@@ -314,19 +314,31 @@ function init() {
       const pick = selected.getAttribute("data-key") || "";
       item.classList.add("is-locked");
 
+      const summary = item.querySelector(".mcq-feedback__summary");
+      const feedback = item.querySelector(".practice-item__mcq-feedback");
+      const correctSafe = escapeHtml(correct);
+
       if (pick === correct) {
+        item.classList.add("mcq-result--correct");
         item.querySelectorAll(".mcq-option").forEach((b) => {
           b.disabled = true;
           if (b === selected) b.classList.add("is-correct");
         });
+        if (summary) {
+          summary.innerHTML = `回答正确！正确选项为 <strong>${correctSafe}</strong>。以下为参考答案与解题思路。`;
+        }
       } else {
+        item.classList.add("mcq-result--wrong");
         selected.classList.add("is-wrong");
         item.querySelectorAll(".mcq-option").forEach((b) => {
           b.disabled = true;
           if (b.getAttribute("data-key") === correct) b.classList.add("is-correct");
         });
-        item.querySelector(".practice-item__mcq-feedback")?.removeAttribute("hidden");
+        if (summary) {
+          summary.innerHTML = `回答错误。正确选项为 <strong>${correctSafe}</strong>。以下为参考答案与解题思路。`;
+        }
       }
+      feedback?.removeAttribute("hidden");
       confirmMcq.disabled = true;
       return;
     }

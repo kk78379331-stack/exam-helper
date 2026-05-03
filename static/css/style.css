@@ -416,6 +416,16 @@ body {
   border-radius: 8px;
 }
 
+.practice-item--mcq.mcq-result--correct .practice-item__mcq-feedback {
+  border-color: rgba(62, 207, 142, 0.45);
+  background: rgba(62, 207, 142, 0.08);
+}
+
+.practice-item--mcq.mcq-result--wrong .practice-item__mcq-feedback {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.08);
+}
+
 .mcq-feedback__summary {
   margin: 0 0 0.75rem;
   font-size: 0.9rem;
@@ -423,8 +433,12 @@ body {
   line-height: 1.5;
 }
 
-.mcq-feedback__summary strong {
+.practice-item--mcq.mcq-result--correct .mcq-feedback__summary strong {
   color: var(--success);
+}
+
+.practice-item--mcq.mcq-result--wrong .mcq-feedback__summary strong {
+  color: #ff9a9a;
 }
 
 .btn--answer {
