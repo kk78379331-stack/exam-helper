@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>留学生期末复习助手</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="header">
+        <h1 class="title">留学生期末复习助手</h1>
+        <p class="subtitle">上传课程 PDF 或 PPT，DeepSeek 将用中文生成考点、难点与练习题</p>
+      </header>
+
+      <main class="card">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-list" role="status">
+              {% for category, message in messages %}
+                <li class="flash flash--{{ category }}">{{ message }}</li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form
+          class="upload-form"
+          action="{{ url_for('index') }}"
+          method="post"
+          enctype="multipart/form-data"
+        >
+          <label class="file-label">
+            <span class="file-label__text">选择 PDF 或 PPT 文件</span>
+            <input
+              class="file-input"
+              type="file"
+              name="material_file"
+              accept=".pdf,.ppt,.pptx,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              required
+            />
+          </label>
+          <button class="btn btn--primary" type="submit">上传并分析</button>
+        </form>
+
+        {% if last_filename %}
+          <section class="result" aria-live="polite">
+            <h2 class="result__title">已上传文件</h2>
+            <p class="result__filename">{{ last_filename }}</p>
+          </section>
+        {% endif %}
+
+        {% if analysis %}
+          <section class="analysis" aria-label="AI 复习内容">
+            {% if text_truncated %}
+              <p class="analysis__note">
+                讲义较长，仅前 {{ max_chars }} 个字符已参与本次分析。
+              </p>
+            {% endif %}
+            <h2 class="analysis__heading">核心考点列表</h2>
+            <ol class="analysis-list">
+              {% for item in analysis.core_points %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ol>
+
+            <h2 class="analysis__heading">难点解析</h2>
+            <div class="analysis__prose">{{ analysis.difficult_analysis }}</div>
+
+            <h2 class="analysis__heading">同类型练习题</h2>
+            <ol class="analysis-list">
+              {% for item in analysis.practice_questions %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ol>
+          </section>
+        {% endif %}
+      </main>
+
+      <footer class="footer">
+        使用 DeepSeek（deepseek-chat）分析；请在环境变量 DEEPSEEK_API_KEY 中配置密钥。旧版 .ppt 需本机安装
+        LibreOffice 或另存为 .pptx。
+      </footer>
+    </div>
+  </body>
+</html>
