@@ -10,6 +10,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 /** 最近一次「文件分析」的讲义文本与题型，用于换一批练习题（历史记录载入后为空） */
 let lastPracticeContext = null;
 
+/** 当前分析结果对应的历史记录 id（用于同步练习题正确率）；非历史模式为 null */
+let activeHistoryEntryId = null;
+
 /** 待分析的本地文件队列（可多选累加，可从列表移除） */
 let materialFileQueue = [];
 
@@ -107,9 +110,19 @@ function saveHistory(items) {
   localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
 }
 
-function appendHistoryRecord({ source_name, practice_type, text_truncated, analysis }) {
-  if (!analysis || typeof analysis !== "object") return;
+function appendHistoryRecord({
+  source_name,
+  practice_type,
+  text_truncated,
+  analysis,
+  practice_stats: practiceStatsIn,
+}) {
+  if (!analysis || typeof analysis !== "object") return null;
   const list = loadHistory();
+  const pt = practice_type || "mixed";
+  const practice_stats = Array.isArray(practiceStatsIn)
+    ? JSON.parse(JSON.stringify(practiceStatsIn))
+    : buildInitialPracticeStats(analysis, pt);
   const entry = {
     id:
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -117,12 +130,14 @@ function appendHistoryRecord({ source_name, practice_type, text_truncated, analy
         : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     savedAt: new Date().toISOString(),
     source_name: source_name || "（未命名）",
-    practice_type: practice_type || "mixed",
+    practice_type: pt,
     text_truncated: !!text_truncated,
     analysis: JSON.parse(JSON.stringify(analysis)),
+    practice_stats,
   };
   list.unshift(entry);
   saveHistory(list.slice(0, HISTORY_MAX_ITEMS));
+  return entry.id;
 }
 
 function deleteHistoryItem(id) {
@@ -150,6 +165,117 @@ function commitHistoryRename(id, rawValue) {
   list[idx].source_name = trimmed || "（未命名）";
   saveHistory(list);
   renderHistoryList();
+}
+
+function historyPracticeStatsLabel(item) {
+  const stats = item.practice_stats;
+  if (!Array.isArray(stats) || stats.length === 0) return "未作答";
+  let answered = 0;
+  let correct = 0;
+  for (const s of stats) {
+    answered += Number(s.answered) || 0;
+    correct += Number(s.correct) || 0;
+  }
+  if (answered === 0) return "未作答";
+  const pct = Math.round((correct / answered) * 100);
+  return `正确率 ${correct}/${answered}（${pct}%）`;
+}
+
+function countMcqInPracticeQuestions(questions, practiceType) {
+  let n = 0;
+  for (const raw of questions || []) {
+    if (shouldUseMcqInteractive(normalizePracticeRow(raw), practiceType)) n++;
+  }
+  return n;
+}
+
+function buildInitialPracticeStats(analysis, practiceType) {
+  const mcq_total = countMcqInPracticeQuestions(analysis?.practice_questions, practiceType);
+  return [{ batch: 1, correct: 0, answered: 0, mcq_total }];
+}
+
+function formatPracticeBatchStatsLine(correct, answered, mcqTotal) {
+  const mt = Number(mcqTotal) || 0;
+  const c = Number(correct) || 0;
+  const a = Number(answered) || 0;
+  if (mt === 0) return "本批无选择题";
+  if (a === 0) return `本批正确率：尚未作答（本批共 ${mt} 道选择题）`;
+  const pct = Math.round((c / a) * 100);
+  return `本批正确率：${c}/${a}（${pct}%）`;
+}
+
+function collectPracticeStatsFromDom() {
+  const batchesEl = document.getElementById("practice-batches");
+  if (!batchesEl) return [];
+  const sections = batchesEl.querySelectorAll(".practice-batch");
+  const out = [];
+  sections.forEach((sec) => {
+    const batch = Number.parseInt(sec.getAttribute("data-batch") || "0", 10);
+    if (!batch) return;
+    const mcqs = sec.querySelectorAll(".practice-item--mcq");
+    let answered = 0;
+    let correct = 0;
+    mcqs.forEach((li) => {
+      if (!li.classList.contains("is-locked")) return;
+      answered++;
+      if (li.classList.contains("mcq-result--correct")) correct++;
+    });
+    out.push({
+      batch,
+      mcq_total: mcqs.length,
+      correct,
+      answered,
+    });
+  });
+  out.sort((x, y) => x.batch - y.batch);
+  return out;
+}
+
+function updateHistoryEntryPracticeStats(id, stats) {
+  const list = loadHistory();
+  const idx = list.findIndex((x) => x.id === id);
+  if (idx < 0) return;
+  list[idx].practice_stats = JSON.parse(JSON.stringify(stats));
+  saveHistory(list);
+}
+
+function persistAllPracticeStatsToHistory() {
+  if (!activeHistoryEntryId) return;
+  updateHistoryEntryPracticeStats(activeHistoryEntryId, collectPracticeStatsFromDom());
+}
+
+function updatePracticeBatchStatsFooter(batchEl) {
+  const footer = batchEl.querySelector(".js-batch-stats");
+  if (!footer) return;
+  const mcqs = batchEl.querySelectorAll(".practice-item--mcq");
+  let answered = 0;
+  let correct = 0;
+  mcqs.forEach((li) => {
+    if (!li.classList.contains("is-locked")) return;
+    answered++;
+    if (li.classList.contains("mcq-result--correct")) correct++;
+  });
+  footer.textContent = formatPracticeBatchStatsLine(correct, answered, mcqs.length);
+}
+
+function extendPracticeStatsForNewBatch(batchNum, questions, practiceType) {
+  if (!activeHistoryEntryId) return;
+  const list = loadHistory();
+  const idx = list.findIndex((x) => x.id === activeHistoryEntryId);
+  if (idx < 0) return;
+  const prev = Array.isArray(list[idx].practice_stats) ? list[idx].practice_stats : [];
+  const next = [
+    ...prev.filter((s) => Number(s.batch) !== batchNum),
+    {
+      batch: batchNum,
+      correct: 0,
+      answered: 0,
+      mcq_total: countMcqInPracticeQuestions(questions, practiceType),
+    },
+  ];
+  next.sort((a, b) => Number(a.batch) - Number(b.batch));
+  list[idx].practice_stats = next;
+  saveHistory(list);
 }
 
 function clearAllHistory() {
@@ -219,6 +345,7 @@ function renderHistoryList() {
     li.innerHTML =
       `<button type="button" class="history-item__main" data-action="open-history">` +
       `<span class="history-item__name">${escapeHtml(historyDisplayName(item))}</span>` +
+      `<span class="history-item__stats">${escapeHtml(historyPracticeStatsLabel(item))}</span>` +
       `<span class="history-item__time">${escapeHtml(timeStr)}</span>` +
       `</button>` +
       `<button type="button" class="history-item__edit" data-action="edit-history" aria-label="编辑名称">编辑</button>` +
@@ -513,11 +640,29 @@ function buildPracticeOlInnerHtml(questions, practiceType) {
   return html;
 }
 
-function buildPracticeBatchSectionHtml(batchIndex, questions, practiceType, expandedBatch) {
+function buildPracticeBatchSectionHtml(
+  batchIndex,
+  questions,
+  practiceType,
+  expandedBatch,
+  savedStat = null,
+  statsFrozen = false
+) {
   const expandedCls = expandedBatch ? " is-expanded" : "";
   const ae = expandedBatch ? "true" : "false";
+  const mcqTotal = countMcqInPracticeQuestions(questions, practiceType);
+  let correct = 0;
+  let answered = 0;
+  let mt = mcqTotal;
+  if (savedStat && typeof savedStat === "object") {
+    correct = Number(savedStat.correct) || 0;
+    answered = Number(savedStat.answered) || 0;
+    if (savedStat.mcq_total != null) mt = Number(savedStat.mcq_total) || mcqTotal;
+  }
+  const statsLine = formatPracticeBatchStatsLine(correct, answered, mt);
+  const frozenCls = statsFrozen ? " practice-batch--stats-frozen" : "";
   return (
-    `<section class="accordion__item practice-batch${expandedCls}" data-batch="${batchIndex}">` +
+    `<section class="accordion__item practice-batch${expandedCls}${frozenCls}" data-batch="${batchIndex}">` +
     `<button type="button" class="accordion__header practice-batch__header" aria-expanded="${ae}">` +
     `<span class="accordion__title">第${batchIndex}批练习题</span>` +
     `<span class="accordion__chevron" aria-hidden="true"></span>` +
@@ -525,13 +670,19 @@ function buildPracticeBatchSectionHtml(batchIndex, questions, practiceType, expa
     `<div class="accordion__panel">` +
     `<ol class="analysis-list practice-list">` +
     buildPracticeOlInnerHtml(questions, practiceType) +
-    `</ol></div></section>`
+    `</ol>` +
+    `<p class="practice-batch__stats js-batch-stats">${escapeHtml(statsLine)}</p>` +
+    `</div></section>`
   );
 }
 
-function buildPracticeInnerHtml(analysis, practiceType, showReroll) {
+function buildPracticeInnerHtml(analysis, practiceType, showReroll, practiceStats) {
+  const statsArr = Array.isArray(practiceStats) ? practiceStats : [];
+  const freeze = showReroll === false;
   let html = `<div id="practice-root"><div id="practice-batches">`;
-  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType, true);
+  const b1 = statsArr.find((s) => Number(s.batch) === 1) || null;
+  const b1Frozen = freeze && b1 && Number(b1.answered) > 0;
+  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType, true, b1, b1Frozen);
   html += `</div>`;
   if (showReroll) {
     html +=
@@ -545,6 +696,7 @@ function buildPracticeInnerHtml(analysis, practiceType, showReroll) {
 
 function resetToUploadState() {
   lastPracticeContext = null;
+  activeHistoryEntryId = null;
   materialFileQueue = [];
   renderMaterialFileQueue();
   clearFlash();
@@ -586,6 +738,11 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
   setSourceFilenameDisplay(data.source_name);
   resultSection.hidden = false;
 
+  const practiceStatsForRender =
+    Array.isArray(options.practice_stats) && options.practice_stats.length > 0
+      ? options.practice_stats
+      : buildInitialPracticeStats(data.analysis, practiceType);
+
   let html = `<div class="analysis-accordions">`;
   html += buildAccordionItem(
     "核心考点列表",
@@ -596,7 +753,7 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
   html += buildAccordionItem("难点解析", buildDifficultInnerHtml(data.analysis), false);
   html += buildAccordionItem(
     "同类型练习题",
-    buildPracticeInnerHtml(data.analysis, practiceType, showPracticeReroll),
+    buildPracticeInnerHtml(data.analysis, practiceType, showPracticeReroll, practiceStatsForRender),
     true
   );
   html += `</div>`;
@@ -744,12 +901,16 @@ function init() {
       closeHistoryPanel();
       clearFlash();
       lastPracticeContext = null;
+      activeHistoryEntryId = rec.id;
       renderAnalysis(
         { source_name: rec.source_name, analysis: rec.analysis },
         rec.text_truncated,
         maxChars,
         rec.practice_type || "mixed",
-        { showPracticeReroll: false }
+        {
+          showPracticeReroll: false,
+          practice_stats: Array.isArray(rec.practice_stats) ? rec.practice_stats : undefined,
+        }
       );
       showFlash("success", "已载入历史记录。");
     }
@@ -808,8 +969,9 @@ function init() {
           const nextBatch = existing + 1;
           batchesEl.insertAdjacentHTML(
             "beforeend",
-            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt, true)
+            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt, true, null, false)
           );
+          extendPracticeStatsForNewBatch(nextBatch, payload.practice_questions, pt);
           rebalancePracticeBatchAccordions();
           batchesEl
             .querySelector(`.practice-batch[data-batch="${nextBatch}"]`)
@@ -832,6 +994,7 @@ function init() {
     if (mcqBtn) {
       const item = mcqBtn.closest(".practice-item--mcq");
       if (!item || item.classList.contains("is-locked")) return;
+      if (item.closest(".practice-batch--stats-frozen")) return;
       item.querySelectorAll(".mcq-option").forEach((b) => {
         b.classList.remove("is-selected");
         b.setAttribute("aria-pressed", "false");
@@ -845,6 +1008,7 @@ function init() {
     if (confirmMcq) {
       const item = confirmMcq.closest(".practice-item--mcq");
       if (!item || item.classList.contains("is-locked")) return;
+      if (item.closest(".practice-batch--stats-frozen")) return;
       const correct = item.getAttribute("data-correct") || "";
       const selected = item.querySelector(".mcq-option.is-selected");
       if (!selected) {
@@ -880,6 +1044,11 @@ function init() {
       }
       feedback?.removeAttribute("hidden");
       confirmMcq.disabled = true;
+      const batch = item.closest(".practice-batch");
+      if (batch) {
+        updatePracticeBatchStatsFooter(batch);
+        persistAllPracticeStatsToHistory();
+      }
       return;
     }
 
@@ -996,23 +1165,28 @@ function init() {
         typeof payload.source_name === "string" && payload.source_name.trim()
           ? payload.source_name
           : sourceNamePayload;
-      renderAnalysis(
-        { source_name: displaySource, analysis: payload.analysis },
-        textTruncated,
-        maxChars,
-        payload.practice_type || practiceType,
-        { showPracticeReroll: true }
-      );
+      const pt = payload.practice_type || practiceType;
+      const initialPracticeStats = buildInitialPracticeStats(payload.analysis, pt);
+      let newHistoryId = null;
       try {
-        appendHistoryRecord({
+        newHistoryId = appendHistoryRecord({
           source_name: displaySource,
-          practice_type: payload.practice_type || practiceType,
+          practice_type: pt,
           text_truncated: textTruncated,
           analysis: payload.analysis,
+          practice_stats: initialPracticeStats,
         });
       } catch (err) {
         console.warn("历史记录保存失败", err);
       }
+      activeHistoryEntryId = newHistoryId;
+      renderAnalysis(
+        { source_name: displaySource, analysis: payload.analysis },
+        textTruncated,
+        maxChars,
+        pt,
+        { showPracticeReroll: true, practice_stats: initialPracticeStats }
+      );
     } catch (err) {
       showFlash("error", err.message || "网络错误，请稍后重试。");
     } finally {

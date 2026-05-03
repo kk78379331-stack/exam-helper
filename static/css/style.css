@@ -179,6 +179,12 @@ body {
   line-height: 1.35;
 }
 
+.history-item__stats {
+  font-size: 0.72rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .history-item__time {
   font-size: 0.72rem;
   color: var(--muted);
@@ -763,6 +769,23 @@ body {
 .practice-batch__header {
   font-size: 0.92rem;
   padding: 0.7rem 0.9rem;
+}
+
+.practice-batch__stats {
+  margin: 0.75rem 0 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(45, 58, 77, 0.65);
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--accent-hover);
+  line-height: 1.45;
+}
+
+.practice-batch--stats-frozen .mcq-option,
+.practice-batch--stats-frozen .js-mcq-confirm {
+  pointer-events: none;
+  opacity: 0.62;
+  cursor: not-allowed;
 }
 
 .practice-batch-divider {
