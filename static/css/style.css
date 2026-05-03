@@ -495,22 +495,40 @@ body {
   display: none;
 }
 
+.accordion__item--nested {
+  border-radius: 10px;
+}
+
+.accordion__item--nested:not(:last-child) {
+  margin-bottom: 0;
+}
+
+.accordion__header--nested {
+  padding: 0.65rem 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.accordion__panel--nested {
+  padding: 0.65rem 0.85rem 0.85rem;
+  border-top: 1px solid rgba(45, 58, 77, 0.65);
+}
+
+.concept-detail-nest > .accordion__header--nested {
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.difficult-nest > .accordion__header--nested {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
 .difficult-stack {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
-}
-
-.difficult-block {
-  margin: 0;
-}
-
-.difficult-block__label {
-  margin: 0 0 0.45rem;
-  font-size: 0.82rem;
-  font-weight: 650;
-  color: var(--accent-hover);
-  letter-spacing: 0.02em;
+  gap: 0.5rem;
 }
 
 .difficult-myths {
@@ -529,27 +547,17 @@ body {
 }
 
 .concept-detail-list {
-  margin: 0 0 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
 }
 
-.concept-detail-card {
-  margin-bottom: 1.25rem;
-  padding: 1rem 1.05rem;
+.concept-detail-nest {
   background: rgba(0, 0, 0, 0.18);
-  border: 1px solid var(--border);
-  border-radius: 10px;
 }
 
-.concept-detail-card:last-child {
-  margin-bottom: 0.5rem;
-}
-
-.concept-detail-card__title {
-  margin: 0 0 0.85rem;
-  font-size: 0.98rem;
-  font-weight: 700;
-  line-height: 1.45;
-  color: var(--text);
+.concept-detail-nest .accordion__title {
   word-break: break-word;
 }
 

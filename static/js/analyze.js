@@ -286,6 +286,22 @@ function buildAccordionItem(title, panelHtml, expanded) {
   );
 }
 
+/** 一级区块内的二级折叠：默认折叠，sectionExtraClass 如 concept-detail-nest / difficult-nest */
+function buildNestedAccordionSection(title, panelHtml, expanded, sectionExtraClass = "") {
+  const expandedCls = expanded ? " is-expanded" : "";
+  const ae = expanded ? "true" : "false";
+  const extra = sectionExtraClass ? ` ${sectionExtraClass}` : "";
+  return (
+    `<section class="accordion__item accordion__item--nested${extra}${expandedCls}">` +
+    `<button type="button" class="accordion__header accordion__header--nested" aria-expanded="${ae}">` +
+    `<span class="accordion__title">${escapeHtml(title)}</span>` +
+    `<span class="accordion__chevron" aria-hidden="true"></span>` +
+    `</button>` +
+    `<div class="accordion__panel accordion__panel--nested">${panelHtml}</div>` +
+    `</section>`
+  );
+}
+
 function buildCorePointsInnerHtml(analysis, textTruncated, maxChars) {
   let inner = "";
   if (textTruncated) {
@@ -338,21 +354,19 @@ function buildConceptDetailInnerHtml(analysis) {
     const wHtml = w ? escapeHtml(w).replace(/\n/g, "<br />") : "（暂无）";
     const fHtml = f ? escapeHtml(f).replace(/\n/g, "<br />") : "（暂无）";
     const exHtml = ex ? escapeHtml(ex).replace(/\n/g, "<br />") : "（暂无）";
-    html += `<article class="concept-detail-card">`;
-    html += `<h3 class="concept-detail-card__title">${escapeHtml(title)}</h3>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">是什么（零基础版）</h4>`;
-    html += `<div class="concept-detail-block__body">${wHtml}</div>`;
-    html += `</section>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">公式与符号</h4>`;
-    html += `<div class="concept-detail-block__body">${fHtml}</div>`;
-    html += `</section>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
-    html += `<div class="concept-detail-block__body">${exHtml}</div>`;
-    html += `</section>`;
-    html += `</article>`;
+    let panel = `<section class="concept-detail-block">`;
+    panel += `<h4 class="concept-detail-block__label">是什么（零基础版）</h4>`;
+    panel += `<div class="concept-detail-block__body">${wHtml}</div>`;
+    panel += `</section>`;
+    panel += `<section class="concept-detail-block">`;
+    panel += `<h4 class="concept-detail-block__label">公式与符号</h4>`;
+    panel += `<div class="concept-detail-block__body">${fHtml}</div>`;
+    panel += `</section>`;
+    panel += `<section class="concept-detail-block">`;
+    panel += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
+    panel += `<div class="concept-detail-block__body">${exHtml}</div>`;
+    panel += `</section>`;
+    html += buildNestedAccordionSection(title, panel, false, "concept-detail-nest");
   }
   html += `</div>`;
   return html;
@@ -362,27 +376,23 @@ function buildDifficultInnerHtml(analysis) {
   const main = String(analysis.difficult_analysis ?? "");
   const myths = analysis.common_misconceptions;
   const cc = String(analysis.concept_comparison ?? "");
-  let html = `<div class="difficult-stack">`;
-  html += `<section class="difficult-block">`;
-  html += `<h4 class="difficult-block__label">重难点解析</h4>`;
-  html += `<div class="analysis__prose">${escapeHtml(main).replace(/\n/g, "<br />")}</div>`;
-  html += `</section>`;
-  html += `<section class="difficult-block">`;
-  html += `<h4 class="difficult-block__label">常见误区</h4>`;
+  let mythsPanel;
   if (Array.isArray(myths) && myths.length) {
-    html += `<ol class="difficult-myths analysis-list">`;
+    mythsPanel = `<ol class="difficult-myths analysis-list">`;
     for (const m of myths) {
-      html += `<li>${escapeHtml(String(m)).replace(/\n/g, "<br />")}</li>`;
+      mythsPanel += `<li>${escapeHtml(String(m)).replace(/\n/g, "<br />")}</li>`;
     }
-    html += `</ol>`;
+    mythsPanel += `</ol>`;
   } else {
-    html += `<p class="analysis__note analysis__note--tight">暂无。</p>`;
+    mythsPanel = `<p class="analysis__note analysis__note--tight">暂无。</p>`;
   }
-  html += `</section>`;
-  html += `<section class="difficult-block">`;
-  html += `<h4 class="difficult-block__label">概念对比</h4>`;
-  html += `<div class="analysis__prose">${cc ? escapeHtml(cc).replace(/\n/g, "<br />") : "暂无。"}</div>`;
-  html += `</section></div>`;
+  const mainPanel = `<div class="analysis__prose">${escapeHtml(main).replace(/\n/g, "<br />")}</div>`;
+  const ccPanel = `<div class="analysis__prose">${cc ? escapeHtml(cc).replace(/\n/g, "<br />") : "暂无。"}</div>`;
+  let html = `<div class="difficult-stack">`;
+  html += buildNestedAccordionSection("难点说明", mainPanel, false, "difficult-nest");
+  html += buildNestedAccordionSection("常见误区", mythsPanel, false, "difficult-nest");
+  html += buildNestedAccordionSection("概念对比", ccPanel, false, "difficult-nest");
+  html += `</div>`;
   return html;
 }
 
