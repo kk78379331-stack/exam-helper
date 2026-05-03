@@ -15,6 +15,7 @@ from deepseek_client import (
     DeepSeekError,
     analyze_course_text,
     normalize_practice_type,
+    regenerate_practice_questions,
 )
 
 # Vercel 等对请求体有限制：仅接收 JSON 文本，限制在 2MB 以内足够覆盖截断后的讲义文本
@@ -72,6 +73,33 @@ def api_analyze():
             "practice_type": practice_type,
         }
     )
+
+
+@app.route("/api/regenerate-practice", methods=["POST"])
+def api_regenerate_practice():
+    if not request.is_json:
+        return jsonify({"error": "请使用 application/json 发送请求。"}), 415
+
+    data = request.get_json(silent=True) or {}
+    text = data.get("text")
+    practice_type = normalize_practice_type(data.get("practice_type"))
+
+    if not isinstance(text, str):
+        return jsonify({"error": "缺少字段 text 或类型错误。"}), 400
+
+    text = text.strip()
+    if not text:
+        return jsonify({"error": "text 为空，无法生成练习题。"}), 400
+
+    if len(text) > MAX_INPUT_CHARS:
+        text = text[:MAX_INPUT_CHARS]
+
+    try:
+        questions = regenerate_practice_questions(text, practice_type=practice_type)
+    except DeepSeekError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    return jsonify({"ok": True, "practice_questions": questions, "practice_type": practice_type})
 
 
 if __name__ == "__main__":

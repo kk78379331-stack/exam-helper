@@ -52,6 +52,7 @@
           id="analyze-form"
           data-max-chars="{{ max_chars }}"
           data-api-url="{{ url_for('api_analyze') }}"
+          data-regenerate-url="{{ url_for('api_regenerate_practice') }}"
         >
           <label class="file-label">
             <span class="file-label__text">选择 PDF 或 PPTX 文件（在本地解析，仅上传文字）</span>

@@ -73,6 +73,15 @@ JSON 的键必须严格为：
 
 确保 JSON 合法，字符串内的换行和引号需正确转义。"""
 
+REGENERATE_PRACTICE_PROMPT = """你是面向留学生的课程复习助教。
+用户会再次提供**同一份**讲义摘录，且刚刚已完成过一批练习题；你的任务是根据该讲义**重新生成一整批全新的练习题**（设问角度、情境、选项或数值须与常见套路有明显变化，**禁止**仅对上一批题目做同义改写或微调）。
+只输出**一个** JSON 对象，不要 Markdown 代码围栏、不要任何前后说明文字。该对象**只包含一个键**：
+- "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq" 或 "written"）、correct_option（mcq 时为 A/B/C/D 之一，written 时为 ""）；题型与选项格式须符合用户消息开头的题型说明。
+
+练习题数量适中（例如 3～8 题），内容具体可作答。
+
+确保 JSON 合法，字符串内的换行和引号需正确转义。"""
+
 
 def _read_deepseek_api_key() -> str:
     """从环境变量读取 Key，兼容 UTF-8 BOM、首尾空白与引号包裹。"""
@@ -292,6 +301,88 @@ def _normalize_practice_questions(
             }
         )
     return out
+
+
+def parse_practice_questions_only(content: str, practice_type_hint: str) -> list[dict[str, str]]:
+    """解析仅含 practice_questions 的模型 JSON（或根为数组）。"""
+    raw = _strip_code_fence(content)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start < 0 or end <= start:
+            start = raw.find("[")
+            end = raw.rfind("]")
+            if start < 0 or end <= start:
+                raise DeepSeekError("模型返回不是合法 JSON，请稍后重试。")
+            try:
+                arr = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError as exc:
+                raise DeepSeekError("模型返回不是合法 JSON，请稍后重试。") from exc
+            if not isinstance(arr, list):
+                raise DeepSeekError("根数组格式错误。")
+            data = {"practice_questions": arr}
+        else:
+            try:
+                data = json.loads(raw[start : end + 1])
+            except json.JSONDecodeError as exc:
+                raise DeepSeekError("模型返回不是合法 JSON，请稍后重试。") from exc
+
+    if isinstance(data, list):
+        data = {"practice_questions": data}
+
+    if "practice_questions" not in data:
+        raise DeepSeekError("模型返回缺少字段：practice_questions")
+    if not isinstance(data["practice_questions"], list):
+        raise DeepSeekError("practice_questions 应为数组")
+
+    hint = normalize_practice_type(practice_type_hint)
+    return _normalize_practice_questions(data["practice_questions"], hint)
+
+
+def regenerate_practice_questions(document_text: str, practice_type: str = "mixed") -> list[dict[str, str]]:
+    """同一讲义 + 同一题型下，重新生成一批练习题。"""
+    api_key = _read_deepseek_api_key()
+    if not api_key:
+        raise DeepSeekError("未配置 DEEPSEEK_API_KEY 环境变量，无法调用 DeepSeek。")
+
+    ptype = normalize_practice_type(practice_type)
+    type_block = PRACTICE_TYPE_INSTRUCTIONS.get(ptype, PRACTICE_TYPE_INSTRUCTIONS["mixed"])
+
+    trimmed = document_text
+    if len(trimmed) > MAX_INPUT_CHARS:
+        trimmed = trimmed[:MAX_INPUT_CHARS]
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://api.deepseek.com",
+        timeout=300.0,
+    )
+
+    user_content = (
+        f"{type_block}\n\n"
+        "【任务】上一批练习题已完成。请仅根据下列同一讲义内容，输出**全新一批**练习题（JSON 仅含 practice_questions 键）。\n\n"
+        f"讲义文本（可能已截断至约 {MAX_INPUT_CHARS} 字）：\n\n{trimmed}"
+    )
+
+    try:
+        completion = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": REGENERATE_PRACTICE_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.55,
+        )
+    except Exception as exc:
+        raise DeepSeekError(f"调用 DeepSeek 失败：{exc}") from exc
+
+    choice = completion.choices[0].message.content
+    if not choice:
+        raise DeepSeekError("模型未返回内容。")
+
+    return parse_practice_questions_only(choice, practice_type_hint=ptype)
 
 
 def normalize_practice_type(value: Any) -> str:

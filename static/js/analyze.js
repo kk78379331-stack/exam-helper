@@ -7,6 +7,9 @@ import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.4.168/build/pdf.worker.mjs";
 
+/** 最近一次「文件分析」的讲义文本与题型，用于换一批练习题（历史记录载入后为空） */
+let lastPracticeContext = null;
+
 function escapeHtml(s) {
   const d = document.createElement("div");
   d.textContent = s;
@@ -269,7 +272,26 @@ function buildPracticeItemHtml(row, practiceType) {
   );
 }
 
+function buildPracticeBlockHtml(analysisPartial, practiceType, showReroll) {
+  let html = `<div id="practice-block">`;
+  html += `<h2 class="analysis__heading">同类型练习题</h2>`;
+  html += `<ol class="analysis-list practice-list" id="practice-questions-list">`;
+  for (const raw of analysisPartial.practice_questions || []) {
+    html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType);
+  }
+  html += `</ol>`;
+  if (showReroll) {
+    html +=
+      `<div class="practice-reroll-bar">` +
+      `<button type="button" class="btn btn--secondary js-reroll-practice" id="btn-reroll-practice">换一批题目</button>` +
+      `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 function resetToUploadState() {
+  lastPracticeContext = null;
   clearFlash();
   const toolbar = document.getElementById("result-toolbar");
   const resultSection = document.getElementById("result-section");
@@ -339,7 +361,8 @@ function buildConceptExplanationsSection(analysis) {
   return html;
 }
 
-function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed") {
+function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", options = {}) {
+  const showPracticeReroll = options.showPracticeReroll === true;
   const section = document.getElementById("analysis-section");
   const resultSection = document.getElementById("result-section");
   const nameEl = document.getElementById("source-filename");
@@ -382,12 +405,7 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed") {
   html += buildConceptExplanationsSection(data.analysis);
   html += `<h2 class="analysis__heading">难点解析</h2>`;
   html += `<div class="analysis__prose">${escapeHtml(String(data.analysis.difficult_analysis ?? "")).replace(/\n/g, "<br />")}</div>`;
-  html += `<h2 class="analysis__heading">同类型练习题</h2><ol class="analysis-list practice-list">`;
-  const questions = data.analysis.practice_questions || [];
-  for (const raw of questions) {
-    html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType);
-  }
-  html += `</ol>`;
+  html += buildPracticeBlockHtml(data.analysis, practiceType, showPracticeReroll);
 
   section.innerHTML = html;
   section.hidden = false;
@@ -446,11 +464,13 @@ function init() {
       if (!rec?.analysis) return;
       closeHistoryPanel();
       clearFlash();
+      lastPracticeContext = null;
       renderAnalysis(
         { source_name: rec.source_name, analysis: rec.analysis },
         rec.text_truncated,
         maxChars,
-        rec.practice_type || "mixed"
+        rec.practice_type || "mixed",
+        { showPracticeReroll: false }
       );
       showFlash("success", "已载入历史记录。");
     }
@@ -463,6 +483,54 @@ function init() {
   });
 
   document.getElementById("analysis-section")?.addEventListener("click", (e) => {
+    const rerollBtn = e.target.closest(".js-reroll-practice");
+    if (rerollBtn) {
+      e.preventDefault();
+      if (!lastPracticeContext?.text) {
+        showFlash("error", "请先完成一次文件分析后再换一批题目；从历史记录打开时无法换题。");
+        return;
+      }
+      rerollBtn.disabled = true;
+      const prevLabel = rerollBtn.textContent;
+      rerollBtn.textContent = "正在生成…";
+      void (async () => {
+        try {
+          const res = await fetch(lastPracticeContext.regenerateUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: lastPracticeContext.text,
+              practice_type: lastPracticeContext.practiceType,
+            }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            showFlash("error", payload.error || `换题失败（${res.status}）`);
+            return;
+          }
+          const block = document.getElementById("practice-block");
+          const pt = payload.practice_type || lastPracticeContext.practiceType;
+          if (block) {
+            block.outerHTML = buildPracticeBlockHtml(
+              { practice_questions: payload.practice_questions },
+              pt,
+              true
+            );
+          }
+          showFlash("success", "已换新一批练习题。");
+        } catch (err) {
+          showFlash("error", err.message || "网络错误，请稍后重试。");
+        } finally {
+          const b = document.getElementById("btn-reroll-practice");
+          if (b) {
+            b.disabled = false;
+            b.textContent = "换一批题目";
+          }
+        }
+      })();
+      return;
+    }
+
     const mcqBtn = e.target.closest(".mcq-option");
     if (mcqBtn) {
       const item = mcqBtn.closest(".practice-item--mcq");
@@ -615,11 +683,17 @@ function init() {
       }
 
       showFlash("success", "分析完成。");
+      lastPracticeContext = {
+        text: sendText,
+        practiceType: payload.practice_type || practiceType,
+        regenerateUrl: form.dataset.regenerateUrl || "/api/regenerate-practice",
+      };
       renderAnalysis(
         { source_name: payload.source_name, analysis: payload.analysis },
         textTruncated,
         maxChars,
-        payload.practice_type || practiceType
+        payload.practice_type || practiceType,
+        { showPracticeReroll: true }
       );
       try {
         appendHistoryRecord({
