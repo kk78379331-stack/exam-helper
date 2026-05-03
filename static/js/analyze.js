@@ -16,6 +16,9 @@ let activeHistoryEntryId = null;
 /** 待分析的本地文件队列（可多选累加，可从列表移除） */
 let materialFileQueue = [];
 
+/** 可选：单份复习提纲（PDF/PPTX），与讲义一并提交 */
+let outlineMaterialFile = null;
+
 /** 历史记录面板中正在编辑显示名称的记录 id */
 let historyEditId = null;
 
@@ -25,9 +28,14 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-function starBar(n) {
-  const s = Math.min(5, Math.max(1, Math.floor(Number(n)) || 1));
-  return "⭐".repeat(s);
+/** 1～5 档重要程度：短进度条（无星标），满格颜色随档位变化 */
+function ratingProgressBarHtml(star) {
+  const lv = Math.min(5, Math.max(1, Math.floor(Number(star)) || 1));
+  let cells = "";
+  for (let i = 0; i < 5; i++) {
+    cells += `<span class="rating-bar__cell${i < lv ? " rating-bar__cell--on" : ""}"></span>`;
+  }
+  return `<span class="rating-bar rating-bar--lv${lv}" title="重要程度 ${lv}/5" aria-label="重要程度 ${lv} 档"><span class="rating-bar__track">${cells}</span></span>`;
 }
 
 function getStarRatingFromCore(raw) {
@@ -98,7 +106,7 @@ function buildRelatedPointsBlock(row, corePoints) {
     const name =
       typeof raw === "string" ? raw : raw?.point || `考点 ${idx + 1}`;
     const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
-    parts.push(`${escapeHtml(name)}（${starBar(star)}）`);
+    parts.push(`${escapeHtml(name)} ${ratingProgressBarHtml(star)}`);
   }
   if (!idxs.length) {
     return (
@@ -145,7 +153,10 @@ function formatKnowledgePointStatsFromMap(byPointMap, coreArr) {
   return entries
     .map(
       (e) =>
-        `<p class="practice-batch__stats-line">${escapeHtml(e.name)}（${starBar(e.star)}）：答对${e.correct}/${e.total}题，掌握程度${e.pct}%</p>`
+        `<p class="practice-batch__stats-line practice-batch__stats-line--kp">` +
+        `<span class="practice-batch__stats-kp-name">${escapeHtml(e.name)}</span> ` +
+        `${ratingProgressBarHtml(e.star)}：` +
+        `答对${e.correct}/${e.total}题，掌握程度${e.pct}%</p>`
     )
     .join("");
 }
@@ -659,6 +670,18 @@ function renderHistoryList() {
   }
 }
 
+function renderOutlineFileHint() {
+  const el = document.getElementById("outline-file-name");
+  if (!el) return;
+  if (!outlineMaterialFile) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
+  el.textContent = `已选提纲：${outlineMaterialFile.name}`;
+}
+
 function renderMaterialFileQueue() {
   const listEl = document.getElementById("file-queue-list");
   const emptyEl = document.getElementById("file-queue-empty");
@@ -913,17 +936,16 @@ function buildCorePointsInnerHtml(analysis, textTruncated, maxChars) {
     inner += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
   }
   inner +=
-    `<p class="core-points-legend">星级说明：` +
-    `⭐⭐⭐⭐⭐ 核心必考每次必出；⭐⭐⭐⭐ 高频考点重点掌握；⭐⭐⭐ 中等重要偶尔出题；` +
-    `⭐⭐ 了解即可较少出题；⭐ 背景知识基本不考。</p>`;
+    `<p class="core-points-legend">重要程度以考点后的短进度条表示（满格为 5 档）：` +
+    `5 档满格深红＝核心必考；4 档橙色＝高频重点；3 档黄色＝中等偶尔考；` +
+    `2 档浅蓝＝了解较少考；1 档灰色＝背景基本不考。</p>`;
   inner += `<ol class="analysis-list core-points-list">`;
   for (const raw of analysis.core_points || []) {
     const point = typeof raw === "string" ? raw : raw.point || "";
     const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
-    const stars = starBar(star);
     inner += `<li class="core-point">`;
-    inner += `<span class="core-point__stars" title="${star} 星">${stars}</span>`;
     inner += `<span class="core-point__text">${escapeHtml(point)}</span>`;
+    inner += `<span class="core-point__bar-wrap">${ratingProgressBarHtml(star)}</span>`;
     inner += `</li>`;
   }
   inner += `</ol>`;
@@ -1037,7 +1059,12 @@ function buildPracticeBatchSectionHtml(
     `<ol class="analysis-list practice-list">` +
     buildPracticeOlInnerHtml(questions, practiceType, cp) +
     `</ol>` +
-    `<div class="practice-batch__stats js-batch-stats">${statsHtml}</div>` +
+    buildNestedAccordionSection(
+      "正确率统计",
+      `<div class="practice-batch__stats js-batch-stats">${statsHtml}</div>`,
+      false,
+      "practice-stats-nest"
+    ) +
     `</div></section>`
   );
 }
@@ -1073,6 +1100,10 @@ function resetToUploadState() {
   lastPracticeContext = null;
   activeHistoryEntryId = null;
   materialFileQueue = [];
+  outlineMaterialFile = null;
+  const outlineInp = document.getElementById("outline-file");
+  if (outlineInp) outlineInp.value = "";
+  renderOutlineFileHint();
   renderMaterialFileQueue();
   clearFlash();
   const toolbar = document.getElementById("result-toolbar");
@@ -1198,6 +1229,25 @@ function init() {
 
   renderMaterialFileQueue();
   document.getElementById("material-file")?.addEventListener("change", onMaterialFileInputChange);
+  document.getElementById("outline-file")?.addEventListener("change", (e) => {
+    const input = e.target;
+    const f = input?.files?.[0];
+    if (!f) {
+      outlineMaterialFile = null;
+      renderOutlineFileHint();
+      return;
+    }
+    const ext = extOf(f.name);
+    if (ext !== "pdf" && ext !== "pptx") {
+      showFlash("error", "复习提纲仅支持 .pdf 或 .pptx。");
+      input.value = "";
+      outlineMaterialFile = null;
+      renderOutlineFileHint();
+      return;
+    }
+    outlineMaterialFile = f;
+    renderOutlineFileHint();
+  });
   document.getElementById("file-queue-list")?.addEventListener("click", (e) => {
     const rm = e.target.closest("[data-action='remove-queued-file']");
     if (!rm) return;
@@ -1344,6 +1394,7 @@ function init() {
               text: lastPracticeContext.text,
               practice_type: lastPracticeContext.practiceType,
               core_points_count: lastPracticeContext.corePointsLen ?? 0,
+              outline_text: lastPracticeContext.outlineText ?? "",
             }),
           });
           const payload = await res.json().catch(() => ({}));
@@ -1540,6 +1591,29 @@ function init() {
       textTruncated = true;
     }
 
+    let outlineTextPayload = "";
+    if (outlineMaterialFile) {
+      try {
+        btn.textContent = "正在提取复习提纲…";
+        const ot = await extractLocalText(outlineMaterialFile);
+        outlineTextPayload = (ot || "").trim();
+        if (!outlineTextPayload) {
+          showFlash(
+            "error",
+            `未能从复习提纲「${outlineMaterialFile.name}」中读出有效文字，请换文件或移除提纲后重试。`
+          );
+          btn.disabled = false;
+          btn.textContent = oldLabel;
+          return;
+        }
+      } catch (err) {
+        showFlash("error", err.message || String(err));
+        btn.disabled = false;
+        btn.textContent = oldLabel;
+        return;
+      }
+    }
+
     btn.textContent = "正在调用 DeepSeek 分析…";
 
     const practiceType =
@@ -1553,6 +1627,7 @@ function init() {
           text: sendText,
           source_name: sourceNamePayload,
           practice_type: practiceType,
+          outline_text: outlineTextPayload,
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -1566,6 +1641,9 @@ function init() {
       }
 
       showFlash("success", "分析完成。");
+      if (payload.text_truncated === true) {
+        textTruncated = true;
+      }
       lastPracticeContext = {
         text: sendText,
         practiceType: payload.practice_type || practiceType,
@@ -1573,6 +1651,7 @@ function init() {
         corePointsLen: Array.isArray(payload.analysis?.core_points)
           ? payload.analysis.core_points.length
           : 0,
+        outlineText: outlineTextPayload || undefined,
       };
       const displaySource =
         typeof payload.source_name === "string" && payload.source_name.trim()

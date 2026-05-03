@@ -68,6 +68,22 @@
           <p id="file-queue-empty" class="file-queue-empty">尚未选择文件，请点击上方按钮选择。</p>
           <p class="file-upload-limit-hint" role="note">建议单次上传不超过10个文件，过多文件可能导致分析质量下降</p>
 
+          <div class="outline-upload" id="outline-upload">
+            <label class="file-label file-label--outline">
+              <span class="file-label__text">上传复习提纲（选填，单个 PDF 或 PPTX）</span>
+              <input
+                class="file-input"
+                type="file"
+                id="outline-file"
+                accept=".pdf,.pptx,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+              />
+            </label>
+            <p id="outline-file-name" class="outline-upload__name" hidden aria-live="polite"></p>
+            <p class="outline-upload__hint">
+              若上传老师给的复习提纲，将与讲义一并提交分析；模型会<strong>优先根据提纲</strong>判断考点重要程度，提纲中出现的内容倾向标注更高星级。
+            </p>
+          </div>
+
           <fieldset class="practice-type-fieldset">
             <legend class="practice-type-legend">考试题型（生成对应格式的练习题）</legend>
             <div class="practice-type-options" role="radiogroup" aria-label="考试题型">

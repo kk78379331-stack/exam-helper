@@ -450,6 +450,38 @@ body {
   color: var(--error);
 }
 
+.outline-upload {
+  margin: 1rem 0 0;
+  padding: 0.85rem 0.9rem;
+  border: 1px dashed rgba(91, 140, 255, 0.35);
+  border-radius: var(--radius);
+  background: rgba(91, 140, 255, 0.06);
+}
+
+.file-label--outline .file-label__text {
+  font-weight: 650;
+  color: var(--text);
+}
+
+.outline-upload__name {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: var(--accent-hover);
+  word-break: break-all;
+}
+
+.outline-upload__hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.outline-upload__hint strong {
+  color: var(--accent-hover);
+  font-weight: 650;
+}
+
 .btn {
   padding: 0.75rem 1.25rem;
   border: none;
@@ -720,25 +752,95 @@ body {
 
 .core-points-list .core-point {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem 0.65rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem 0.85rem;
   flex-wrap: wrap;
   margin-bottom: 0.65rem;
   list-style-position: outside;
 }
 
-.core-point__stars {
-  flex-shrink: 0;
-  font-size: 0.72rem;
-  line-height: 1.45;
-  letter-spacing: 0.02em;
-  user-select: none;
-}
-
 .core-point__text {
   flex: 1;
-  min-width: 12rem;
+  min-width: 0;
   line-height: 1.55;
+}
+
+.core-point__bar-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* 重要程度短进度条（5 格），颜色随满档数变化 */
+.rating-bar {
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.rating-bar__track {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.rating-bar__cell {
+  width: 7px;
+  height: 12px;
+  border-radius: 2px;
+  background: rgba(100, 116, 139, 0.35);
+  flex-shrink: 0;
+}
+
+.rating-bar--lv5 .rating-bar__cell--on {
+  background: #9f1239;
+}
+
+.rating-bar--lv4 .rating-bar__cell--on {
+  background: #ea580c;
+}
+
+.rating-bar--lv3 .rating-bar__cell--on {
+  background: #ca8a04;
+}
+
+.rating-bar--lv2 .rating-bar__cell--on {
+  background: #7dd3fc;
+}
+
+.rating-bar--lv1 .rating-bar__cell--on {
+  background: #94a3b8;
+}
+
+.practice-item__related .rating-bar {
+  margin-left: 0.15rem;
+}
+
+.practice-batch__stats-line--kp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+}
+
+.practice-batch__stats-kp-name {
+  font-weight: 650;
+}
+
+.practice-stats-nest {
+  margin-top: 0.65rem;
+}
+
+.practice-stats-nest > .accordion__header--nested {
+  font-size: 0.88rem;
+}
+
+.practice-stats-nest .practice-batch__stats {
+  margin: 0;
+  padding: 0;
+  border: none;
+  font-weight: 500;
+  color: var(--text);
 }
 
 .practice-item__related {

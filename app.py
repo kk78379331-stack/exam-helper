@@ -14,6 +14,7 @@ from deepseek_client import (
     MAX_INPUT_CHARS,
     DeepSeekError,
     analyze_course_text,
+    merge_material_with_outline,
     normalize_practice_type,
     regenerate_practice_questions,
 )
@@ -41,6 +42,10 @@ def api_analyze():
     text = data.get("text")
     source_name = data.get("source_name")
     practice_type = normalize_practice_type(data.get("practice_type"))
+    outline_raw = data.get("outline_text")
+    outline_text = outline_raw.strip() if isinstance(outline_raw, str) else None
+    if outline_text == "":
+        outline_text = None
 
     if not isinstance(text, str):
         return jsonify({"error": "缺少字段 text 或类型错误。"}), 400
@@ -50,7 +55,9 @@ def api_analyze():
         return jsonify({"error": "text 为空，无法分析。"}), 400
 
     text_truncated = False
-    if len(text) > MAX_INPUT_CHARS:
+    if outline_text:
+        text, text_truncated = merge_material_with_outline(text, outline_text)
+    elif len(text) > MAX_INPUT_CHARS:
         text = text[:MAX_INPUT_CHARS]
         text_truncated = True
 
@@ -83,6 +90,10 @@ def api_regenerate_practice():
     data = request.get_json(silent=True) or {}
     text = data.get("text")
     practice_type = normalize_practice_type(data.get("practice_type"))
+    outline_raw = data.get("outline_text")
+    outline_text = outline_raw.strip() if isinstance(outline_raw, str) else None
+    if outline_text == "":
+        outline_text = None
     cpc = data.get("core_points_count")
     try:
         core_points_count = int(cpc) if cpc is not None else 0
@@ -98,7 +109,9 @@ def api_regenerate_practice():
     if not text:
         return jsonify({"error": "text 为空，无法生成练习题。"}), 400
 
-    if len(text) > MAX_INPUT_CHARS:
+    if outline_text:
+        text, _ = merge_material_with_outline(text, outline_text)
+    elif len(text) > MAX_INPUT_CHARS:
         text = text[:MAX_INPUT_CHARS]
 
     try:

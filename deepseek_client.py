@@ -14,6 +14,48 @@ class DeepSeekError(Exception):
 
 MAX_INPUT_CHARS = 120_000
 
+# 讲义 + 可选复习提纲合并为单段用户材料时的固定片段（长度计入 MAX_INPUT_CHARS）
+_MERGE_OUTLINE_PRIORITY = (
+    "【分析指令】请优先根据下方「复习提纲」段落判断各 core_points 的 star_rating："
+    "提纲中出现、着重强调、列为重点或反复展开的内容应优先标注为高星级（仍须遵守本系统对五星考点总数上限等全部 JSON 硬性规则）；"
+    "「课程讲义」段落用于补充与核对知识点。若提纲与讲义在「考频判断」上侧重不同，以提纲为准确定星级。\n\n"
+)
+_OUTLINE_BLOCK_HEAD = "【复习提纲（教师提供）】\n\n"
+_MAIN_BLOCK_HEAD = "\n\n【课程讲义】\n\n"
+
+
+def merge_material_with_outline(main: str, outline: str | None) -> tuple[str, bool]:
+    """将讲义与可选提纲合并为一条材料字符串，总长度不超过 MAX_INPUT_CHARS。
+
+    返回 (merged_text, truncated) ；truncated 表示任一段因长度被截断。
+    """
+    main_st = (main or "").strip()
+    o_st = (str(outline).strip() if outline else "") or ""
+    if not o_st:
+        if len(main_st) > MAX_INPUT_CHARS:
+            return main_st[:MAX_INPUT_CHARS], True
+        return main_st, False
+
+    fixed = len(_MERGE_OUTLINE_PRIORITY) + len(_OUTLINE_BLOCK_HEAD) + len(_MAIN_BLOCK_HEAD)
+    avail = MAX_INPUT_CHARS - fixed
+    if avail < 2000:
+        avail = 2000
+
+    max_o = min(len(o_st), avail * 45 // 100)
+    max_m = avail - max_o
+    if max_m < 8000:
+        max_m = min(avail, 8000)
+        max_o = max(0, avail - max_m)
+        max_o = min(len(o_st), max_o)
+    o_trim = o_st[:max_o]
+    m_trim = main_st[:max_m]
+    truncated = len(o_st) > len(o_trim) or len(main_st) > len(m_trim)
+    merged = _MERGE_OUTLINE_PRIORITY + _OUTLINE_BLOCK_HEAD + o_trim + _MAIN_BLOCK_HEAD + m_trim
+    if len(merged) > MAX_INPUT_CHARS:
+        merged = merged[:MAX_INPUT_CHARS]
+        truncated = True
+    return merged, truncated
+
 VALID_PRACTICE_TYPES = frozenset(
     {"mcq", "true_false", "short_answer", "calculation", "mixed"}
 )
@@ -86,6 +128,7 @@ JSON 的键必须严格为：
   - "star_rating": 整数 1～5，表示该考点在考试中的相对重要程度（须与下列星级含义一致，且与讲义内容匹配）：
     5 = 核心必考，每次考试几乎必出现；4 = 高频考点，应重点掌握；3 = 中等重要，偶尔出题；2 = 了解即可，较少出题；1 = 背景知识，基本不考。
   【五星考点数量】star_rating 为 5 的条目总数**硬性不得超过 5 条**；信息量正常时建议 3～5 条五星；严禁把大半考点都标为 5 星；其余考点应诚实降为 4～1 星。
+  【复习提纲优先】若用户消息中同时包含「【复习提纲（教师提供）】」与「【课程讲义】」所引导的两段材料：判断 star_rating 时**必须优先依据复习提纲**中体现的重点、结构与表述；提纲中反复出现、明示「重点」「必考」「掌握」或占篇幅显著的内容，应**倾向标注更高星级**（仍须遵守五星考点总数上限等全部硬性规则）。课程讲义用于穷尽知识点与核对事实；若提纲与讲义在「考频判断」上侧重不同，**以提纲为准**确定星级，但不得编造与讲义明显矛盾的事实。
 - "concept_explanations": 数组，长度必须与 "core_points" 完全一致且顺序一一对应：第 i 条详解对应第 i 个考点。每一项必须是对象，且恰好包含三个字符串键（均用简体中文书写）：
   - "what_it_is": 用最直白、最简单的语言说明「这个概念到底是什么、在讲什么」，假设读者完全没听过课也能读懂；避免堆砌术语，必要时用类比。
   - "formulas_notes": 若该考点涉及公式或符号，请写出公式（可用 LaTeX 风格或纯文本如 E=mc²），并逐项说明每个符号/变量代表什么、常用单位是什么、在题目或应用中如何代入使用；若本考点基本无公式，则写一两句话说明「本概念以定性理解为主」或「无常用公式」即可，勿留空键。
@@ -525,7 +568,7 @@ def parse_practice_questions_only(
 def regenerate_practice_questions(
     document_text: str, practice_type: str = "mixed", core_points_count: int = 0
 ) -> list[dict[str, str]]:
-    """同一讲义 + 同一题型下，重新生成一批练习题。"""
+    """同一讲义 + 同一题型下，重新生成一批练习题。document_text 可为已在路由层合并提纲后的全文。"""
     api_key = _read_deepseek_api_key()
     if not api_key:
         raise DeepSeekError("未配置 DEEPSEEK_API_KEY 环境变量，无法调用 DeepSeek。")
@@ -552,11 +595,19 @@ def regenerate_practice_questions(
             "每道题必须输出 **related_core_point_indices**（整数数组），且每个下标均须落在上述范围内。\n"
         )
 
+    if "【复习提纲" in trimmed:
+        mat_label = (
+            "材料全文（含复习提纲与课程讲义；可能已截断至约 "
+            f"{MAX_INPUT_CHARS} 字）"
+        )
+    else:
+        mat_label = f"讲义文本（可能已截断至约 {MAX_INPUT_CHARS} 字）"
+
     user_content = (
         f"{type_block}\n\n"
         "【任务】上一批练习题已完成。请仅根据下列同一讲义内容，输出**全新一批**练习题（JSON 仅含 practice_questions 键）。\n\n"
         f"{reroll_append}{idx_hint}\n"
-        f"讲义文本（可能已截断至约 {MAX_INPUT_CHARS} 字）：\n\n{trimmed}"
+        f"{mat_label}：\n\n{trimmed}"
     )
 
     try:
@@ -650,10 +701,14 @@ def analyze_course_text(
         timeout=300.0,
     )
 
-    user_content = (
-        f"{type_block}\n\n"
-        f"以下是从讲义中提取的文本（可能已截断至约 {MAX_INPUT_CHARS} 字）：\n\n{trimmed}"
-    )
+    if "【复习提纲" in trimmed:
+        intro = (
+            f"以下为用户提供的材料（含「复习提纲」与「课程讲义」两段；可能已截断至约 {MAX_INPUT_CHARS} 字）："
+        )
+    else:
+        intro = f"以下是从课程讲义中提取的文本（可能已截断至约 {MAX_INPUT_CHARS} 字）："
+
+    user_content = f"{type_block}\n\n{intro}\n\n{trimmed}"
 
     try:
         completion = client.chat.completions.create(
