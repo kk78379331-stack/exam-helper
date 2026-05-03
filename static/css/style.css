@@ -739,37 +739,71 @@ body {
   margin-bottom: 0.45rem;
 }
 
-.core-points-legend {
-  margin: 0 0 0.75rem;
-  padding: 0.55rem 0.65rem;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  color: var(--muted);
-  background: rgba(0, 0, 0, 0.14);
-  border: 1px solid rgba(45, 58, 77, 0.55);
-  border-radius: 8px;
+.core-points-legend-nest {
+  margin: 0 0 0.55rem;
 }
 
-.core-points-list .core-point {
+.core-points-legend-lines {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.core-points-legend-line {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem 0.85rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.65rem;
-  list-style-position: outside;
+  gap: 0.55rem;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text);
 }
 
-.core-point__text {
+.core-points-legend-line__bar {
+  flex-shrink: 0;
+}
+
+.core-points-legend-line__txt {
   flex: 1;
   min-width: 0;
-  line-height: 1.55;
 }
 
-.core-point__bar-wrap {
-  flex-shrink: 0;
+.core-kp-merged-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0;
+}
+
+.core-kp-detail-nest {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.core-kp-detail-nest > .accordion__header--nested {
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.core-kp-nested-head {
   display: flex;
   align-items: center;
+  gap: 0.55rem;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.core-kp-nested-head__bar {
+  flex-shrink: 0;
+}
+
+.accordion__title--core-kp {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+  font-weight: 650;
 }
 
 /* 重要程度短进度条（5 格），颜色随满档数变化 */
@@ -812,15 +846,42 @@ body {
   background: #94a3b8;
 }
 
-.practice-item__related .rating-bar {
-  margin-left: 0.15rem;
+.practice-item__related-rows {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.practice-item__related-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.practice-item__related-row__bar {
+  flex-shrink: 0;
+}
+
+.practice-item__related-row__name {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.practice-item__related-label-row {
+  margin: 0;
 }
 
 .practice-batch__stats-line--kp {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.25rem 0.4rem;
+  gap: 0.35rem 0.45rem;
+}
+
+.practice-batch__stats-line--kp > .rating-bar {
+  flex-shrink: 0;
 }
 
 .practice-batch__stats-kp-name {

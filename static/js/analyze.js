@@ -99,34 +99,41 @@ function parseRelatedIndicesFromRow(row) {
 function buildRelatedPointsBlock(row, corePoints) {
   const idxs = parseRelatedIndicesFromRow(row);
   const pts = corePoints || [];
-  const parts = [];
+  const rows = [];
   for (const idx of idxs) {
     const raw = pts[idx];
     if (raw === undefined || raw === null) continue;
     const name =
       typeof raw === "string" ? raw : raw?.point || `考点 ${idx + 1}`;
     const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
-    parts.push(`${escapeHtml(name)} ${ratingProgressBarHtml(star)}`);
+    rows.push(
+      `<div class="practice-item__related-row">` +
+        `<span class="practice-item__related-row__bar">${ratingProgressBarHtml(star)}</span>` +
+        `<span class="practice-item__related-row__name">${escapeHtml(name)}</span>` +
+      `</div>`
+    );
   }
   if (!idxs.length) {
     return (
-      `<p class="practice-item__related">` +
+      `<div class="practice-item__related">` +
       `<span class="practice-item__related-label">考察知识点：</span>` +
-      `<span class="practice-item__related-muted">（模型未标注）</span></p>`
+      `<span class="practice-item__related-muted">（模型未标注）</span></div>`
     );
   }
-  if (!parts.length) {
+  if (!rows.length) {
     return (
-      `<p class="practice-item__related">` +
+      `<div class="practice-item__related">` +
       `<span class="practice-item__related-label">考察知识点：</span>` +
-      `<span class="practice-item__related-muted">（无法匹配考点）</span></p>`
+      `<span class="practice-item__related-muted">（无法匹配考点）</span></div>`
     );
   }
   return (
-    `<p class="practice-item__related">` +
+    `<div class="practice-item__related">` +
+    `<div class="practice-item__related-label-row">` +
     `<span class="practice-item__related-label">考察知识点：</span>` +
-    `${parts.join("；")}` +
-    `</p>`
+    `</div>` +
+    `<div class="practice-item__related-rows">${rows.join("")}</div>` +
+    `</div>`
   );
 }
 
@@ -154,8 +161,8 @@ function formatKnowledgePointStatsFromMap(byPointMap, coreArr) {
     .map(
       (e) =>
         `<p class="practice-batch__stats-line practice-batch__stats-line--kp">` +
-        `<span class="practice-batch__stats-kp-name">${escapeHtml(e.name)}</span> ` +
-        `${ratingProgressBarHtml(e.star)}：` +
+        `${ratingProgressBarHtml(e.star)}` +
+        `<span class="practice-batch__stats-kp-name">${escapeHtml(e.name)}</span>：` +
         `答对${e.correct}/${e.total}题，掌握程度${e.pct}%</p>`
     )
     .join("");
@@ -930,42 +937,75 @@ function buildNestedAccordionSection(title, panelHtml, expanded, sectionExtraCla
   );
 }
 
-function buildCorePointsInnerHtml(analysis, textTruncated, maxChars) {
+/** 二级折叠：自定义按钮内 HTML（已转义的安全片段），用于考点名 + 进度条表头 */
+function buildCoreKpNestRow(headerContentHtml, panelHtml, expanded, sectionExtraClass = "") {
+  const expandedCls = expanded ? " is-expanded" : "";
+  const ae = expanded ? "true" : "false";
+  const extra = sectionExtraClass ? ` ${sectionExtraClass}` : "";
+  return (
+    `<section class="accordion__item accordion__item--nested${extra}${expandedCls}">` +
+    `<button type="button" class="accordion__header accordion__header--nested accordion__header--core-kp" aria-expanded="${ae}">` +
+    headerContentHtml +
+    `<span class="accordion__chevron" aria-hidden="true"></span>` +
+    `</button>` +
+    `<div class="accordion__panel accordion__panel--nested">${panelHtml}</div>` +
+    `</section>`
+  );
+}
+
+const CORE_RATING_LEGEND_LINES = [
+  { star: 5, text: "核心必考，每次考试几乎必出现" },
+  { star: 4, text: "高频考点，应重点掌握" },
+  { star: 3, text: "中等重要，偶尔出题" },
+  { star: 2, text: "了解即可，较少出题" },
+  { star: 1, text: "背景知识，基本不考" },
+];
+
+/** 合并原「核心考点列表」与「概念详解」：重要度说明可折叠、考点按星级降序、点击考点名展开详解 */
+function buildCoreConceptPanelHtml(analysis, textTruncated, maxChars) {
   let inner = "";
   if (textTruncated) {
     inner += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
   }
-  inner +=
-    `<p class="core-points-legend">重要程度以考点后的短进度条表示（满格为 5 档）：` +
-    `5 档满格深红＝核心必考；4 档橙色＝高频重点；3 档黄色＝中等偶尔考；` +
-    `2 档浅蓝＝了解较少考；1 档灰色＝背景基本不考。</p>`;
-  inner += `<ol class="analysis-list core-points-list">`;
-  for (const raw of analysis.core_points || []) {
-    const point = typeof raw === "string" ? raw : raw.point || "";
-    const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
-    inner += `<li class="core-point">`;
-    inner += `<span class="core-point__text">${escapeHtml(point)}</span>`;
-    inner += `<span class="core-point__bar-wrap">${ratingProgressBarHtml(star)}</span>`;
-    inner += `</li>`;
-  }
-  inner += `</ol>`;
-  return inner;
-}
 
-function buildConceptDetailInnerHtml(analysis) {
+  const legendPanel =
+    `<div class="core-points-legend-lines">` +
+    CORE_RATING_LEGEND_LINES.map(
+      ({ star, text }) =>
+        `<p class="core-points-legend-line">` +
+        `<span class="core-points-legend-line__bar">${ratingProgressBarHtml(star)}</span>` +
+        `<span class="core-points-legend-line__txt">${escapeHtml(text)}</span>` +
+        `</p>`
+    ).join("") +
+    `</div>`;
+
+  inner += buildNestedAccordionSection(
+    "重要程度说明",
+    legendPanel,
+    false,
+    "core-points-legend-nest"
+  );
+
   const points = analysis.core_points || [];
-  const items = analysis.concept_explanations;
-  if (!Array.isArray(items) || items.length === 0) {
-    return `<p class="analysis__note">暂无概念详解数据（可能为旧版历史记录）。</p>`;
+  const items = Array.isArray(analysis.concept_explanations) ? analysis.concept_explanations : [];
+
+  if (!points.length) {
+    inner += `<p class="analysis__note">暂无核心考点数据。</p>`;
+    return inner;
   }
-  let html = `<div class="concept-detail-list">`;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i] || {};
-    const rawPoint = points[i];
-    const title =
-      typeof rawPoint === "string"
-        ? rawPoint
-        : rawPoint?.point || `考点 ${i + 1}`;
+
+  const sorted = points
+    .map((raw, idx) => ({
+      raw,
+      idx,
+      star: getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {}),
+      point: typeof raw === "string" ? raw : raw?.point || "",
+    }))
+    .sort((a, b) => b.star - a.star || a.idx - b.idx);
+
+  inner += `<div class="core-kp-merged-list">`;
+  for (const ent of sorted) {
+    const it = items[ent.idx] || {};
     const w = it.what_it_is || it.plain_explanation || "";
     const f = it.formulas_notes || it.formulas || "";
     const ex = it.life_example || "";
@@ -984,10 +1024,17 @@ function buildConceptDetailInnerHtml(analysis) {
     panel += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
     panel += `<div class="concept-detail-block__body">${exHtml}</div>`;
     panel += `</section>`;
-    html += buildNestedAccordionSection(title, panel, false, "concept-detail-nest");
+
+    const headHtml =
+      `<span class="core-kp-nested-head">` +
+      `<span class="core-kp-nested-head__bar">${ratingProgressBarHtml(ent.star)}</span>` +
+      `<span class="accordion__title accordion__title--core-kp">${escapeHtml(ent.point)}</span>` +
+      `</span>`;
+
+    inner += buildCoreKpNestRow(headHtml, panel, false, "core-kp-detail-nest");
   }
-  html += `</div>`;
-  return html;
+  inner += `</div>`;
+  return inner;
 }
 
 function buildDifficultInnerHtml(analysis) {
@@ -1151,11 +1198,10 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
 
   let html = `<div class="analysis-accordions">`;
   html += buildAccordionItem(
-    "核心考点列表",
-    buildCorePointsInnerHtml(data.analysis, textTruncated, maxChars),
+    "核心考点",
+    buildCoreConceptPanelHtml(data.analysis, textTruncated, maxChars),
     true
   );
-  html += buildAccordionItem("概念详解", buildConceptDetailInnerHtml(data.analysis), false);
   html += buildAccordionItem("难点解析", buildDifficultInnerHtml(data.analysis), false);
   html += buildAccordionItem(
     "同类型练习题",
