@@ -25,6 +25,138 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+function starBar(n) {
+  const s = Math.min(5, Math.max(1, Math.floor(Number(n)) || 1));
+  return "⭐".repeat(s);
+}
+
+function getStarRatingFromCore(raw) {
+  if (typeof raw === "object" && raw != null) {
+    const sv = Number(raw.star_rating);
+    if (!Number.isNaN(sv) && sv >= 1 && sv <= 5) return sv;
+    const imp = String(raw.importance || "")
+      .replace(/【|】/g, "")
+      .trim();
+    if (imp === "必考") return 5;
+    if (imp === "了解") return 2;
+    if (imp === "一般") return 3;
+  }
+  return 3;
+}
+
+function serializeCorePointsForDataAttr(corePoints) {
+  const arr = (corePoints || []).map((raw) => {
+    if (typeof raw === "string") return { point: raw, star_rating: 3 };
+    return {
+      point: raw.point || "",
+      star_rating: getStarRatingFromCore(raw),
+    };
+  });
+  try {
+    return encodeURIComponent(JSON.stringify(arr));
+  } catch {
+    return encodeURIComponent("[]");
+  }
+}
+
+function readCorePointsFromPracticeRoot(fromEl) {
+  const root =
+    (fromEl && fromEl.nodeType === 1 && fromEl.closest && fromEl.closest("#practice-root")) ||
+    document.getElementById("practice-root");
+  const enc = root?.dataset?.corePointsJson;
+  if (!enc) return [];
+  try {
+    return JSON.parse(decodeURIComponent(enc));
+  } catch {
+    return [];
+  }
+}
+
+function parseRelatedIndicesFromRow(row) {
+  if (!row || typeof row !== "object") return [];
+  let rel = row.related_core_point_indices;
+  if (Array.isArray(rel)) {
+    return rel
+      .map((x) => parseInt(String(x), 10))
+      .filter((n) => !Number.isNaN(n) && n >= 0);
+  }
+  const s = String(rel || "").trim();
+  if (!s) return [];
+  return s
+    .split(/[,，\s]+/)
+    .map((t) => parseInt(t.trim(), 10))
+    .filter((n) => !Number.isNaN(n) && n >= 0);
+}
+
+function buildRelatedPointsBlock(row, corePoints) {
+  const idxs = parseRelatedIndicesFromRow(row);
+  const pts = corePoints || [];
+  const parts = [];
+  for (const idx of idxs) {
+    const raw = pts[idx];
+    if (raw === undefined || raw === null) continue;
+    const name =
+      typeof raw === "string" ? raw : raw?.point || `考点 ${idx + 1}`;
+    const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
+    parts.push(`${escapeHtml(name)}（${starBar(star)}）`);
+  }
+  if (!idxs.length) {
+    return (
+      `<p class="practice-item__related">` +
+      `<span class="practice-item__related-label">考察知识点：</span>` +
+      `<span class="practice-item__related-muted">（模型未标注）</span></p>`
+    );
+  }
+  if (!parts.length) {
+    return (
+      `<p class="practice-item__related">` +
+      `<span class="practice-item__related-label">考察知识点：</span>` +
+      `<span class="practice-item__related-muted">（无法匹配考点）</span></p>`
+    );
+  }
+  return (
+    `<p class="practice-item__related">` +
+    `<span class="practice-item__related-label">考察知识点：</span>` +
+    `${parts.join("；")}` +
+    `</p>`
+  );
+}
+
+function formatKnowledgePointStatsFromMap(byPointMap, coreArr) {
+  const pts = Array.isArray(coreArr) ? coreArr : [];
+  const entries = Object.entries(byPointMap || {})
+    .map(([k, v]) => {
+      const idx = parseInt(k, 10);
+      const total = Number(v.total) || 0;
+      const correct = Number(v.correct) || 0;
+      if (total <= 0) return null;
+      const raw = pts[idx];
+      const name =
+        typeof raw === "string" ? raw : raw?.point || `考点 ${Number.isNaN(idx) ? k : idx + 1}`;
+      const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
+      const pct = Math.round((correct / total) * 100);
+      return { name, star, total, correct, pct };
+    })
+    .filter(Boolean);
+  entries.sort((a, b) => b.star - a.star || String(a.name).localeCompare(String(b.name), "zh-CN"));
+  if (!entries.length) {
+    return `<p class="practice-batch__stats-line practice-batch__stats-line--muted">尚未产生按知识点的答题数据（请先作答带考点关联的题目）。</p>`;
+  }
+  return entries
+    .map(
+      (e) =>
+        `<p class="practice-batch__stats-line">${escapeHtml(e.name)}（${starBar(e.star)}）：答对${e.correct}/${e.total}题，掌握程度${e.pct}%</p>`
+    )
+    .join("");
+}
+
+function formatPracticeBatchStatsFooterHtml(stat, corePointsArr) {
+  if (hasByPointAttempts(stat.by_point)) {
+    return formatKnowledgePointStatsFromMap(stat.by_point, corePointsArr);
+  }
+  return formatBatchStatsBlockHtml(stat);
+}
+
 function decodeXmlText(s) {
   if (!s) return "";
   return s
@@ -167,9 +299,37 @@ function commitHistoryRename(id, rawValue) {
   renderHistoryList();
 }
 
+function hasByPointAttempts(byPoint) {
+  if (!byPoint || typeof byPoint !== "object") return false;
+  return Object.values(byPoint).some((v) => Number(v?.total) > 0);
+}
+
 function historyPracticeStatsLabel(item) {
   const stats = item.practice_stats;
   if (!Array.isArray(stats) || stats.length === 0) return "未作答";
+  const kpAgg = {};
+  for (const s of stats) {
+    if (!s.by_point || typeof s.by_point !== "object") continue;
+    for (const [k, v] of Object.entries(s.by_point)) {
+      const t = Number(v?.total) || 0;
+      const c = Number(v?.correct) || 0;
+      if (t <= 0) continue;
+      if (!kpAgg[k]) kpAgg[k] = { total: 0, correct: 0 };
+      kpAgg[k].total += t;
+      kpAgg[k].correct += c;
+    }
+  }
+  const kpKeys = Object.keys(kpAgg);
+  let kpAttempt = 0;
+  let kpCorrect = 0;
+  for (const k of kpKeys) {
+    kpAttempt += kpAgg[k].total;
+    kpCorrect += kpAgg[k].correct;
+  }
+  if (kpAttempt > 0) {
+    const pct = Math.round((kpCorrect / kpAttempt) * 100);
+    return `知识点 ${kpKeys.length} 项 · 掌握程度约 ${pct}%`;
+  }
   let mcqC = 0;
   let mcqA = 0;
   let tfC = 0;
@@ -229,11 +389,22 @@ function buildEmptyBatchStatV2(questions, practiceType, batchNum) {
     tf: { correct: 0, answered: 0, total: c.tf },
     short_answer: { mastered: 0, total: c.short_answer },
     calculation: { mastered: 0, total: c.calculation },
+    by_point: {},
   };
 }
 
 function buildInitialPracticeStats(analysis, practiceType) {
   return [buildEmptyBatchStatV2(analysis?.practice_questions, practiceType, 1)];
+}
+
+/** 合并题型统计与按考点统计（persist 用）；旧记录可能仅有 v2 字段。 */
+function migrateBatchStat(savedStat, questions, practiceType, batchIndex) {
+  const v2 = migrateBatchStatToV2(savedStat, questions, practiceType, batchIndex);
+  const bp =
+    savedStat && savedStat.by_point && typeof savedStat.by_point === "object"
+      ? JSON.parse(JSON.stringify(savedStat.by_point))
+      : {};
+  return { ...v2, by_point: bp };
 }
 
 function migrateBatchStatToV2(savedStat, questions, practiceType, batchIndex) {
@@ -308,6 +479,14 @@ function collectPracticeStatsFromDom() {
       tf: { correct: 0, answered: 0, total: 0 },
       short_answer: { mastered: 0, total: 0 },
       calculation: { mastered: 0, total: 0 },
+      by_point: {},
+    };
+    const addKP = (idx, correct, attempted) => {
+      if (!attempted) return;
+      const key = String(idx);
+      if (!stat.by_point[key]) stat.by_point[key] = { total: 0, correct: 0 };
+      stat.by_point[key].total++;
+      if (correct) stat.by_point[key].correct++;
     };
     sec.querySelectorAll(".practice-item--mcq:not(.practice-item--tf)").forEach((li) => {
       stat.mcq.total++;
@@ -328,6 +507,27 @@ function collectPracticeStatsFromDom() {
     sec.querySelectorAll('.practice-item--written[data-written-kind="calculation"]').forEach((li) => {
       stat.calculation.total++;
       if (li.classList.contains("is-self-mastered")) stat.calculation.mastered++;
+    });
+    sec.querySelectorAll(".practice-item").forEach((li) => {
+      const rawIdx = li.getAttribute("data-related-indices") || "";
+      const idxs = rawIdx
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !Number.isNaN(n) && n >= 0);
+      if (!idxs.length) return;
+      const wasCorrect = li.classList.contains("mcq-result--correct");
+      const locked = li.classList.contains("is-locked");
+      const mastered = li.classList.contains("is-self-mastered");
+      const reviewed = li.classList.contains("is-review-tracked");
+      const isMcq = li.classList.contains("practice-item--mcq");
+      const isWritten = li.classList.contains("practice-item--written");
+      if (isMcq && locked) {
+        idxs.forEach((i) => addKP(i, wasCorrect, true));
+      } else if (isWritten && mastered) {
+        idxs.forEach((i) => addKP(i, true, true));
+      } else if (isWritten && reviewed && !mastered) {
+        idxs.forEach((i) => addKP(i, false, true));
+      }
     });
     out.push(stat);
   });
@@ -353,11 +553,13 @@ function updatePracticeBatchStatsFooter(batchEl) {
   if (!footer) return;
   const stat = collectPracticeStatsFromDom().find((s) => s.batch === Number(batchEl.dataset.batch));
   if (!stat) return;
-  footer.innerHTML = formatBatchStatsBlockHtml(stat);
+  const core = readCorePointsFromPracticeRoot(batchEl);
+  footer.innerHTML = formatPracticeBatchStatsFooterHtml(stat, core);
 }
 
 function batchStatHasProgress(s) {
   if (!s || typeof s !== "object") return false;
+  if (hasByPointAttempts(s.by_point)) return true;
   if (Number(s.answered) > 0) return true;
   if (s.mcq && Number(s.mcq.answered) > 0) return true;
   if (s.tf && Number(s.tf.answered) > 0) return true;
@@ -374,7 +576,7 @@ function extendPracticeStatsForNewBatch(batchNum, questions, practiceType) {
   const prev = Array.isArray(list[idx].practice_stats) ? list[idx].practice_stats : [];
   const next = [
     ...prev.filter((s) => Number(s.batch) !== batchNum),
-    buildEmptyBatchStatV2(questions, practiceType, batchNum),
+    migrateBatchStat(null, questions, practiceType, batchNum),
   ];
   next.sort((a, b) => Number(a.batch) - Number(b.batch));
   list[idx].practice_stats = next;
@@ -512,16 +714,27 @@ function normalizePracticeRow(raw) {
       solution_approach: "",
       question_format: "short_answer",
       correct_option: "",
+      related_core_point_indices: "",
     };
   }
   let question_format = normalizePracticeFormat(raw.question_format);
   if (question_format === "written") question_format = "short_answer";
+  let rel = raw.related_core_point_indices;
+  if (Array.isArray(rel)) {
+    rel = rel
+      .map((x) => parseInt(String(x), 10))
+      .filter((n) => !Number.isNaN(n) && n >= 0)
+      .join(",");
+  } else {
+    rel = String(rel || "").trim();
+  }
   return {
     question: raw.question || "",
     reference_answer: raw.reference_answer || "",
     solution_approach: raw.solution_approach || "",
     question_format,
     correct_option: raw.correct_option != null ? String(raw.correct_option) : "",
+    related_core_point_indices: rel,
   };
 }
 
@@ -584,13 +797,15 @@ function shouldUseTfInteractive(row, practiceType) {
   return correct === "TRUE" || correct === "FALSE";
 }
 
-function buildPracticeItemHtml(row, practiceType) {
+function buildPracticeItemHtml(row, practiceType, corePoints) {
   const ansHtml = row.reference_answer
     ? escapeHtml(row.reference_answer).replace(/\n/g, "<br />")
     : "（暂无）";
   const solHtml = row.solution_approach
     ? escapeHtml(row.solution_approach).replace(/\n/g, "<br />")
     : "（暂无）";
+  const idxStr = parseRelatedIndicesFromRow(row).join(",");
+  const relHtml = buildRelatedPointsBlock(row, corePoints);
 
   if (shouldUseTfInteractive(row, practiceType)) {
     const correct = normalizeTfCorrect(row.reference_answer, row.correct_option);
@@ -602,8 +817,9 @@ function buildPracticeItemHtml(row, practiceType) {
       `<span class="mcq-option__key">F</span>` +
       `<span class="mcq-option__text">False</span></button></li>`;
     return (
-      `<li class="practice-item practice-item--mcq practice-item--tf" data-correct="${correct}">` +
+      `<li class="practice-item practice-item--mcq practice-item--tf" data-correct="${correct}" data-related-indices="${idxStr}">` +
       `<div class="practice-item__stem">${escapeHtml(row.question)}</div>` +
+      relHtml +
       `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
       `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
       `<div class="practice-item__mcq-feedback" hidden>` +
@@ -630,8 +846,9 @@ function buildPracticeItemHtml(row, practiceType) {
       .join("");
 
     return (
-      `<li class="practice-item practice-item--mcq" data-correct="${correct}">` +
+      `<li class="practice-item practice-item--mcq" data-correct="${correct}" data-related-indices="${idxStr}">` +
       `<div class="practice-item__stem">${escapeHtml(parsed.stem)}</div>` +
+      relHtml +
       `<ul class="mcq-options" role="list">${optsHtml}</ul>` +
       `<button type="button" class="btn btn--confirm js-mcq-confirm">确认答案</button>` +
       `<div class="practice-item__mcq-feedback" hidden>` +
@@ -646,8 +863,9 @@ function buildPracticeItemHtml(row, practiceType) {
 
   const wk = getWrittenKind(row, practiceType);
   return (
-    `<li class="practice-item practice-item--written" data-written-kind="${wk}">` +
+    `<li class="practice-item practice-item--written" data-written-kind="${wk}" data-related-indices="${idxStr}">` +
     `<div class="practice-item__stem">${escapeHtml(row.question)}</div>` +
+    relHtml +
     `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>` +
     `<button type="button" class="btn btn--secondary btn--small js-self-master" aria-pressed="false">我已掌握</button>` +
     `<div class="practice-item__detail" hidden>` +
@@ -694,26 +912,17 @@ function buildCorePointsInnerHtml(analysis, textTruncated, maxChars) {
   if (textTruncated) {
     inner += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
   }
-  const impClass = {
-    必考: "importance--must",
-    一般: "importance--normal",
-    了解: "importance--light",
-  };
+  inner +=
+    `<p class="core-points-legend">星级说明：` +
+    `⭐⭐⭐⭐⭐ 核心必考每次必出；⭐⭐⭐⭐ 高频考点重点掌握；⭐⭐⭐ 中等重要偶尔出题；` +
+    `⭐⭐ 了解即可较少出题；⭐ 背景知识基本不考。</p>`;
   inner += `<ol class="analysis-list core-points-list">`;
   for (const raw of analysis.core_points || []) {
-    let point;
-    let imp;
-    if (typeof raw === "string") {
-      point = raw;
-      imp = "一般";
-    } else {
-      point = raw.point || "";
-      imp = raw.importance || "一般";
-    }
-    if (!impClass[imp]) imp = "一般";
-    const ic = impClass[imp];
+    const point = typeof raw === "string" ? raw : raw.point || "";
+    const star = getStarRatingFromCore(typeof raw === "string" ? { point: raw } : raw || {});
+    const stars = starBar(star);
     inner += `<li class="core-point">`;
-    inner += `<span class="core-point__tag ${ic}">【${escapeHtml(imp)}】</span>`;
+    inner += `<span class="core-point__stars" title="${star} 星">${stars}</span>`;
     inner += `<span class="core-point__text">${escapeHtml(point)}</span>`;
     inner += `</li>`;
   }
@@ -795,10 +1004,10 @@ function rebalancePracticeBatchAccordions() {
   });
 }
 
-function buildPracticeOlInnerHtml(questions, practiceType) {
+function buildPracticeOlInnerHtml(questions, practiceType, corePoints) {
   let html = "";
   for (const raw of questions || []) {
-    html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType);
+    html += buildPracticeItemHtml(normalizePracticeRow(raw), practiceType, corePoints);
   }
   return html;
 }
@@ -809,12 +1018,14 @@ function buildPracticeBatchSectionHtml(
   practiceType,
   expandedBatch,
   savedStat = null,
-  statsFrozen = false
+  statsFrozen = false,
+  corePoints = null
 ) {
   const expandedCls = expandedBatch ? " is-expanded" : "";
   const ae = expandedBatch ? "true" : "false";
-  const v2 = migrateBatchStatToV2(savedStat, questions, practiceType, batchIndex);
-  const statsHtml = formatBatchStatsBlockHtml(v2);
+  const merged = migrateBatchStat(savedStat, questions, practiceType, batchIndex);
+  const cp = corePoints != null ? corePoints : [];
+  const statsHtml = formatPracticeBatchStatsFooterHtml(merged, cp);
   const frozenCls = statsFrozen ? " practice-batch--stats-frozen" : "";
   return (
     `<section class="accordion__item practice-batch${expandedCls}${frozenCls}" data-batch="${batchIndex}">` +
@@ -824,7 +1035,7 @@ function buildPracticeBatchSectionHtml(
     `</button>` +
     `<div class="accordion__panel">` +
     `<ol class="analysis-list practice-list">` +
-    buildPracticeOlInnerHtml(questions, practiceType) +
+    buildPracticeOlInnerHtml(questions, practiceType, cp) +
     `</ol>` +
     `<div class="practice-batch__stats js-batch-stats">${statsHtml}</div>` +
     `</div></section>`
@@ -834,10 +1045,19 @@ function buildPracticeBatchSectionHtml(
 function buildPracticeInnerHtml(analysis, practiceType, showReroll, practiceStats) {
   const statsArr = Array.isArray(practiceStats) ? practiceStats : [];
   const freeze = showReroll === false;
-  let html = `<div id="practice-root"><div id="practice-batches">`;
+  const cpJson = serializeCorePointsForDataAttr(analysis.core_points);
+  let html = `<div id="practice-root" data-core-points-json="${cpJson}"><div id="practice-batches">`;
   const b1 = statsArr.find((s) => Number(s.batch) === 1) || null;
   const b1Frozen = freeze && batchStatHasProgress(b1);
-  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType, true, b1, b1Frozen);
+  html += buildPracticeBatchSectionHtml(
+    1,
+    analysis.practice_questions,
+    practiceType,
+    true,
+    b1,
+    b1Frozen,
+    analysis.core_points
+  );
   html += `</div>`;
   if (showReroll) {
     html +=
@@ -1123,6 +1343,7 @@ function init() {
             body: JSON.stringify({
               text: lastPracticeContext.text,
               practice_type: lastPracticeContext.practiceType,
+              core_points_count: lastPracticeContext.corePointsLen ?? 0,
             }),
           });
           const payload = await res.json().catch(() => ({}));
@@ -1138,9 +1359,19 @@ function init() {
           }
           const existing = batchesEl.querySelectorAll(".practice-batch").length;
           const nextBatch = existing + 1;
+          const root = document.getElementById("practice-root");
+          const coreFromDom = readCorePointsFromPracticeRoot(root);
           batchesEl.insertAdjacentHTML(
             "beforeend",
-            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt, true, null, false)
+            buildPracticeBatchSectionHtml(
+              nextBatch,
+              payload.practice_questions,
+              pt,
+              true,
+              null,
+              false,
+              coreFromDom
+            )
           );
           extendPracticeStatsForNewBatch(nextBatch, payload.practice_questions, pt);
           rebalancePracticeBatchAccordions();
@@ -1233,6 +1464,14 @@ function init() {
       detail.removeAttribute("hidden");
       btn.textContent = "收起答案";
       btn.setAttribute("aria-expanded", "true");
+      if (item.classList.contains("practice-item--written")) {
+        item.classList.add("is-review-tracked");
+        const batch = item.closest(".practice-batch");
+        if (batch) {
+          updatePracticeBatchStatsFooter(batch);
+          persistAllPracticeStatsToHistory();
+        }
+      }
     } else {
       detail.setAttribute("hidden", "");
       btn.textContent = "查看答案";
@@ -1331,6 +1570,9 @@ function init() {
         text: sendText,
         practiceType: payload.practice_type || practiceType,
         regenerateUrl: form.dataset.regenerateUrl || "/api/regenerate-practice",
+        corePointsLen: Array.isArray(payload.analysis?.core_points)
+          ? payload.analysis.core_points.length
+          : 0,
       };
       const displaySource =
         typeof payload.source_name === "string" && payload.source_name.trim()

@@ -707,6 +707,17 @@ body {
   margin-bottom: 0.45rem;
 }
 
+.core-points-legend {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.14);
+  border: 1px solid rgba(45, 58, 77, 0.55);
+  border-radius: 8px;
+}
+
 .core-points-list .core-point {
   display: flex;
   align-items: flex-start;
@@ -716,38 +727,40 @@ body {
   list-style-position: outside;
 }
 
-.core-point__tag {
+.core-point__stars {
   flex-shrink: 0;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 0.72rem;
+  line-height: 1.45;
   letter-spacing: 0.02em;
-  padding: 0.2rem 0.45rem;
-  border-radius: 6px;
-  line-height: 1.3;
-}
-
-.core-point__tag.importance--must {
-  color: #ffb4a8;
-  background: rgba(255, 107, 107, 0.18);
-  border: 1px solid rgba(255, 107, 107, 0.35);
-}
-
-.core-point__tag.importance--normal {
-  color: var(--accent-hover);
-  background: rgba(91, 140, 255, 0.12);
-  border: 1px solid rgba(91, 140, 255, 0.3);
-}
-
-.core-point__tag.importance--light {
-  color: var(--muted);
-  background: rgba(139, 156, 179, 0.12);
-  border: 1px solid var(--border);
+  user-select: none;
 }
 
 .core-point__text {
   flex: 1;
   min-width: 12rem;
   line-height: 1.55;
+}
+
+.practice-item__related {
+  margin: 0.35rem 0 0.55rem;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.practice-item__related-label {
+  font-weight: 650;
+  color: var(--accent-hover);
+}
+
+.practice-item__related-muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.practice-batch__stats-line--muted {
+  color: var(--muted);
+  font-weight: 500;
 }
 
 #practice-batches {

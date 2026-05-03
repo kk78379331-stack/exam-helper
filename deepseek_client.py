@@ -81,11 +81,11 @@ REROLL_DISTRIBUTION_APPEND: dict[str, str] = {
 SYSTEM_PROMPT = """你是面向留学生的课程复习助教。用户会提供课程讲义摘录（语言任意）以及练习题型要求（在用户消息开头）。
 你必须全程使用简体中文作答，并只输出一个 JSON 对象，不要 Markdown 围栏、不要前后说明文字。
 JSON 的键必须严格为：
-- "core_points": 数组。每一项必须是对象，且恰好包含两个键（字符串）：
+- "core_points": 数组。每一项必须是对象，且恰好包含两个键：
   - "point": 考点表述，格式严格为「中文考点（English keyword）」：先写简练的中文，紧跟一对中文全角括号，括号内为该考点在学术/课程中常用的英文关键词或短语（首字母大小写符合英语习惯，勿再套一层括号）。示例："知识产权的定义（Definition of Intellectual Property）"、"邻接权（Related Rights）"。不得只写中文不写英文，也不得只有英文没有中文。
-  - "importance": 只能是以下三个字面量之一（字符串本身勿加【】等符号）："必考"、"一般"、"了解"。
-  【必考】数量与门槛（必须严格遵守）：importance 为 "必考" 的条目总数硬性上限为 5 条，不得超过。在讲义信息量正常时，请将必考控制在 3～5 条：仅保留本门课最核心、期末与平时测验中最高频考查、分值或命题概率明显最高的知识点；若讲义很短、真正够格的核心点不足 3 条，可按实际条数标注必考，禁止为凑数虚标。严禁把大半考点标为 "必考"；其余考点必须降为 "一般" 或 "了解"。
-  "一般"=常见考点、值得掌握；"了解"=拓展、背景、次要或低频内容。
+  - "star_rating": 整数 1～5，表示该考点在考试中的相对重要程度（须与下列星级含义一致，且与讲义内容匹配）：
+    5 = 核心必考，每次考试几乎必出现；4 = 高频考点，应重点掌握；3 = 中等重要，偶尔出题；2 = 了解即可，较少出题；1 = 背景知识，基本不考。
+  【五星考点数量】star_rating 为 5 的条目总数**硬性不得超过 5 条**；信息量正常时建议 3～5 条五星；严禁把大半考点都标为 5 星；其余考点应诚实降为 4～1 星。
 - "concept_explanations": 数组，长度必须与 "core_points" 完全一致且顺序一一对应：第 i 条详解对应第 i 个考点。每一项必须是对象，且恰好包含三个字符串键（均用简体中文书写）：
   - "what_it_is": 用最直白、最简单的语言说明「这个概念到底是什么、在讲什么」，假设读者完全没听过课也能读懂；避免堆砌术语，必要时用类比。
   - "formulas_notes": 若该考点涉及公式或符号，请写出公式（可用 LaTeX 风格或纯文本如 E=mc²），并逐项说明每个符号/变量代表什么、常用单位是什么、在题目或应用中如何代入使用；若本考点基本无公式，则写一两句话说明「本概念以定性理解为主」或「无常用公式」即可，勿留空键。
@@ -93,12 +93,13 @@ JSON 的键必须严格为：
 - "difficult_analysis": 单个字符串，写本课**主干重难点解析**（条理清晰，可含多段，使用 \\n 换行）；勿把下列误区与对比混写进本字段。
 - "common_misconceptions": **字符串数组**，**恰好 2～3 条**（不得少于 2、不得多于 3），每条用一句话概括学生**最容易犯的典型错误**或**理解误区**（表述简洁、可独立阅读）。
 - "concept_comparison": 单个字符串，写 **1～2 组**本课中**易混淆的相似概念、术语或情形**之间的**核心区别**（可分点、可换行）；若讲义中可对比内容不足，也需基于材料做合理归纳，勿留空。
-- "practice_questions": 数组，每一项必须是对象，且必须包含以下字符串键：
+- "practice_questions": 数组，每一项必须是对象，且必须包含以下键：
   - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项；判断题 tf 仅写陈述不写 True/False 选项行）；
   - "reference_answer": 参考答案（MCQ/tf 可附简短文字说明）；
   - "solution_approach": 解题思路（关键步骤、知识点、理由；可含多段，用 \\n 换行）；
   - "question_format": 取值为 "mcq"、"tf"、"short_answer" 或 "calculation"（"mcq"=四选一；"tf"=判断题；"short_answer"=简答；"calculation"=计算）；
   - "correct_option": 当 question_format 为 "mcq" 时，必须是 "A"、"B"、"C"、"D" 之一；为 "tf" 时必须是 "TRUE" 或 "FALSE"；为 "short_answer" 或 "calculation" 时必须为空字符串 ""。
+  - "related_core_point_indices": **整数数组**（可为空但不得省略键）：本题考查到的「core_points」中的考点**下标**（从 0 开始），须与题干内容一致，可含多个下标；下标必须在 0 ～ len(core_points)-1 范围内。每道题必须显式列出，便于前端展示「考察知识点」。
 
 【练习题语言（强制）】practice_questions 中每一题的 question、reference_answer、solution_approach 必须使用**简体中文**进行出题与解析（国际通用计量单位符号如 m、s、N 等可保留）。**禁止**用整句、整段英文来出题或写解析；**仅允许**在确有必要时用「中文术语（English term）」这一对中文全角括号的形式夹注专业英文名词，且括号外主体仍为中文。选择题 A.–D. 各选项的正文同样以中文为主，英文仅限括注术语。化学式、公认数学/物理符号、公式本身不受「必须中文」限制，但其前后文字说明仍须为中文。
 
@@ -109,7 +110,7 @@ JSON 的键必须严格为：
 REGENERATE_PRACTICE_PROMPT = """你是面向留学生的课程复习助教。
 用户会再次提供**同一份**讲义摘录，且刚刚已完成过一批练习题；你的任务是根据该讲义**重新生成一整批全新的练习题**（设问角度、情境、选项或数值须与常见套路有明显变化，**禁止**仅对上一批题目做同义改写或微调）。
 只输出**一个** JSON 对象，不要 Markdown 代码围栏、不要任何前后说明文字。该对象**只包含一个键**：
-- "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format（"mcq"、"tf"、"short_answer" 或 "calculation"）、correct_option（mcq 为 A–D；tf 为 TRUE/FALSE；short_answer/calculation 为 ""）；题型须符合用户消息开头的题型说明。
+- "practice_questions": 数组。每一项的结构与主分析接口中的 practice_questions **完全一致**：须含 question、reference_answer、solution_approach、question_format、correct_option、**related_core_point_indices**（整数数组，考点在 core_points 中的下标）；题型须符合用户消息开头的题型说明。
 
 【练习题语言（强制）】须与主分析接口相同：question、reference_answer、solution_approach 一律以**简体中文**出题与解析；英文仅允许「中文（English term）」括注专业术语；禁止整段英文叙述。
 
@@ -138,12 +139,14 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _normalize_core_points(items: list[Any]) -> list[dict[str, str]]:
+    """输出每项含 point、star_rating（字符串 "1"～"5"）。兼容旧版 importance。"""
     out: list[dict[str, str]] = []
+    five_star = 0
     for i, item in enumerate(items):
         if isinstance(item, str):
             t = item.strip()
             if t:
-                out.append({"point": t, "importance": "一般"})
+                out.append({"point": t, "star_rating": "3"})
             continue
         if not isinstance(item, dict):
             raise DeepSeekError(f"core_points[{i}] 应为对象或字符串")
@@ -158,19 +161,36 @@ def _normalize_core_points(items: list[Any]) -> list[dict[str, str]]:
         if not point:
             raise DeepSeekError(f"core_points[{i}] 缺少考点内容 point")
 
-        imp_raw = str(
-            item.get("importance")
-            or item.get("重要程度")
-            or item.get("level")
-            or "一般"
-        ).strip()
-        imp_clean = imp_raw.replace("【", "").replace("】", "").strip()
-        if imp_clean not in VALID_IMPORTANCE:
-            imp_clean = IMPORTANCE_ALIASES.get(imp_clean, "一般")
-        if imp_clean not in VALID_IMPORTANCE:
-            imp_clean = "一般"
+        star: int | None = None
+        sr = item.get("star_rating")
+        if sr is not None and str(sr).strip() != "":
+            try:
+                star = int(float(str(sr).strip()))
+            except (TypeError, ValueError):
+                star = None
+        if star is None:
+            imp_raw = str(
+                item.get("importance")
+                or item.get("重要程度")
+                or item.get("level")
+                or "一般"
+            ).strip()
+            imp_clean = imp_raw.replace("【", "").replace("】", "").strip()
+            if imp_clean not in VALID_IMPORTANCE:
+                imp_clean = IMPORTANCE_ALIASES.get(imp_clean, "一般")
+            if imp_clean not in VALID_IMPORTANCE:
+                imp_clean = "一般"
+            star = {"必考": 5, "一般": 3, "了解": 2}[imp_clean]
+        if star < 1:
+            star = 1
+        if star > 5:
+            star = 5
+        if star == 5:
+            five_star += 1
+            if five_star > 5:
+                star = 4
 
-        out.append({"point": point, "importance": imp_clean})
+        out.append({"point": point, "star_rating": str(star)})
     return out
 
 
@@ -284,13 +304,42 @@ def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[st
     ).strip()
     hint = normalize_practice_type(practice_type_hint)
     data["practice_questions"] = _normalize_practice_questions(
-        data["practice_questions"], hint
+        data["practice_questions"], hint, len(data["core_points"])
     )
     return data
 
 
+def _normalize_related_indices(raw: Any, core_points_len: int, i: int) -> str:
+    """返回逗号分隔的下标字符串；core_points_len<=0 时仅做非负过滤与去重。"""
+    idxs: list[int] = []
+    if isinstance(raw, list):
+        for x in raw:
+            try:
+                idxs.append(int(x))
+            except (TypeError, ValueError):
+                continue
+    elif isinstance(raw, str) and raw.strip():
+        for p in re.split(r"[,，\s]+", raw.strip()):
+            try:
+                idxs.append(int(p))
+            except ValueError:
+                continue
+    out: list[int] = []
+    seen: set[int] = set()
+    upper = core_points_len - 1 if core_points_len > 0 else 10**6
+    for j in idxs:
+        if j < 0:
+            continue
+        if core_points_len > 0 and j > upper:
+            continue
+        if j not in seen:
+            seen.add(j)
+            out.append(j)
+    return ",".join(str(x) for x in out)
+
+
 def _normalize_practice_questions(
-    items: list[Any], practice_type_hint: str = "mixed"
+    items: list[Any], practice_type_hint: str = "mixed", core_points_len: int = 0
 ) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
     for i, item in enumerate(items):
@@ -304,6 +353,7 @@ def _normalize_practice_questions(
                         "solution_approach": "",
                         "question_format": "short_answer",
                         "correct_option": "",
+                        "related_core_point_indices": "",
                     }
                 )
             continue
@@ -407,6 +457,14 @@ def _normalize_practice_questions(
         else:
             correct = ""
 
+        rel = _normalize_related_indices(
+            item.get("related_core_point_indices")
+            or item.get("related_points")
+            or item.get("core_point_indices"),
+            core_points_len,
+            i,
+        )
+
         out.append(
             {
                 "question": q,
@@ -414,6 +472,7 @@ def _normalize_practice_questions(
                 "solution_approach": sol,
                 "question_format": fmt_raw,
                 "correct_option": correct,
+                "related_core_point_indices": rel,
             }
         )
 
@@ -423,7 +482,9 @@ def _normalize_practice_questions(
     return out
 
 
-def parse_practice_questions_only(content: str, practice_type_hint: str) -> list[dict[str, str]]:
+def parse_practice_questions_only(
+    content: str, practice_type_hint: str, core_points_len: int = 0
+) -> list[dict[str, str]]:
     """解析仅含 practice_questions 的模型 JSON（或根为数组）。"""
     raw = _strip_code_fence(content)
     try:
@@ -458,10 +519,12 @@ def parse_practice_questions_only(content: str, practice_type_hint: str) -> list
         raise DeepSeekError("practice_questions 应为数组")
 
     hint = normalize_practice_type(practice_type_hint)
-    return _normalize_practice_questions(data["practice_questions"], hint)
+    return _normalize_practice_questions(data["practice_questions"], hint, core_points_len)
 
 
-def regenerate_practice_questions(document_text: str, practice_type: str = "mixed") -> list[dict[str, str]]:
+def regenerate_practice_questions(
+    document_text: str, practice_type: str = "mixed", core_points_count: int = 0
+) -> list[dict[str, str]]:
     """同一讲义 + 同一题型下，重新生成一批练习题。"""
     api_key = _read_deepseek_api_key()
     if not api_key:
@@ -482,10 +545,17 @@ def regenerate_practice_questions(document_text: str, practice_type: str = "mixe
 
     reroll_append = REROLL_DISTRIBUTION_APPEND.get(ptype, REROLL_DISTRIBUTION_APPEND["mixed"])
 
+    idx_hint = ""
+    if isinstance(core_points_count, int) and core_points_count > 0:
+        idx_hint = (
+            f"\n【考点下标】与当前分析一致的核心考点共 **{core_points_count}** 条，下标范围为 **0～{core_points_count - 1}**。"
+            "每道题必须输出 **related_core_point_indices**（整数数组），且每个下标均须落在上述范围内。\n"
+        )
+
     user_content = (
         f"{type_block}\n\n"
         "【任务】上一批练习题已完成。请仅根据下列同一讲义内容，输出**全新一批**练习题（JSON 仅含 practice_questions 键）。\n\n"
-        f"{reroll_append}\n\n"
+        f"{reroll_append}{idx_hint}\n"
         f"讲义文本（可能已截断至约 {MAX_INPUT_CHARS} 字）：\n\n{trimmed}"
     )
 
@@ -505,7 +575,9 @@ def regenerate_practice_questions(document_text: str, practice_type: str = "mixe
     if not choice:
         raise DeepSeekError("模型未返回内容。")
 
-    return parse_practice_questions_only(choice, practice_type_hint=ptype)
+    return parse_practice_questions_only(
+        choice, practice_type_hint=ptype, core_points_len=max(0, int(core_points_count or 0))
+    )
 
 
 def normalize_practice_type(value: Any) -> str:

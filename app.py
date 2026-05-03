@@ -83,6 +83,13 @@ def api_regenerate_practice():
     data = request.get_json(silent=True) or {}
     text = data.get("text")
     practice_type = normalize_practice_type(data.get("practice_type"))
+    cpc = data.get("core_points_count")
+    try:
+        core_points_count = int(cpc) if cpc is not None else 0
+    except (TypeError, ValueError):
+        core_points_count = 0
+    if core_points_count < 0:
+        core_points_count = 0
 
     if not isinstance(text, str):
         return jsonify({"error": "缺少字段 text 或类型错误。"}), 400
@@ -95,7 +102,9 @@ def api_regenerate_practice():
         text = text[:MAX_INPUT_CHARS]
 
     try:
-        questions = regenerate_practice_questions(text, practice_type=practice_type)
+        questions = regenerate_practice_questions(
+            text, practice_type=practice_type, core_points_count=core_points_count
+        )
     except DeepSeekError as exc:
         return jsonify({"error": str(exc)}), 502
 
