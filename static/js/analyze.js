@@ -126,9 +126,32 @@ function renderAnalysis(data, textTruncated, maxChars) {
   }
   html += `</ol><h2 class="analysis__heading">难点解析</h2>`;
   html += `<div class="analysis__prose">${escapeHtml(data.analysis.difficult_analysis).replace(/\n/g, "<br />")}</div>`;
-  html += `<h2 class="analysis__heading">同类型练习题</h2><ol class="analysis-list">`;
-  for (const item of data.analysis.practice_questions) {
-    html += `<li>${escapeHtml(item)}</li>`;
+  html += `<h2 class="analysis__heading">同类型练习题</h2><ol class="analysis-list practice-list">`;
+  const questions = data.analysis.practice_questions || [];
+  for (const raw of questions) {
+    const row =
+      typeof raw === "string"
+        ? { question: raw, reference_answer: "", solution_approach: "" }
+        : {
+            question: raw.question || "",
+            reference_answer: raw.reference_answer || "",
+            solution_approach: raw.solution_approach || "",
+          };
+    const ansHtml = row.reference_answer
+      ? escapeHtml(row.reference_answer).replace(/\n/g, "<br />")
+      : "（暂无）";
+    const solHtml = row.solution_approach
+      ? escapeHtml(row.solution_approach).replace(/\n/g, "<br />")
+      : "（暂无）";
+    html += `<li class="practice-item">`;
+    html += `<div class="practice-item__stem">${escapeHtml(row.question)}</div>`;
+    html += `<button type="button" class="btn btn--answer js-toggle-answer" aria-expanded="false">查看答案</button>`;
+    html += `<div class="practice-item__detail" hidden>`;
+    html += `<p class="practice-item__label">参考答案</p>`;
+    html += `<div class="practice-item__body">${ansHtml}</div>`;
+    html += `<p class="practice-item__label">解题思路</p>`;
+    html += `<div class="practice-item__body">${solHtml}</div>`;
+    html += `</div></li>`;
   }
   html += `</ol>`;
 
@@ -158,6 +181,24 @@ function init() {
   const apiUrl = form?.dataset.apiUrl || "/api/analyze";
 
   if (!form) return;
+
+  document.getElementById("analysis-section")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".js-toggle-answer");
+    if (!btn) return;
+    const item = btn.closest(".practice-item");
+    const detail = item?.querySelector(".practice-item__detail");
+    if (!detail) return;
+    const isHidden = detail.hasAttribute("hidden");
+    if (isHidden) {
+      detail.removeAttribute("hidden");
+      btn.textContent = "收起答案";
+      btn.setAttribute("aria-expanded", "true");
+    } else {
+      detail.setAttribute("hidden", "");
+      btn.textContent = "查看答案";
+      btn.setAttribute("aria-expanded", "false");
+    }
+  });
 
   document.getElementById("btn-reset-upload")?.addEventListener("click", () => {
     resetToUploadState();

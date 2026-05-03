@@ -228,6 +228,60 @@ body {
   margin-bottom: 0.45rem;
 }
 
+.practice-list .practice-item {
+  margin-bottom: 1.15rem;
+  list-style-position: outside;
+}
+
+.practice-item__stem {
+  margin: 0 0 0.6rem;
+  line-height: 1.55;
+}
+
+.btn--answer {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  background: rgba(91, 140, 255, 0.15);
+  color: var(--accent-hover);
+  border: 1px solid rgba(91, 140, 255, 0.35);
+}
+
+.btn--answer:hover {
+  background: rgba(91, 140, 255, 0.25);
+}
+
+.practice-item__detail {
+  margin-top: 0.35rem;
+  padding: 0.85rem 1rem;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.practice-item__label {
+  margin: 0.65rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.practice-item__label:first-child {
+  margin-top: 0;
+}
+
+.practice-item__body {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
 .analysis__prose {
   margin: 0;
   line-height: 1.65;
