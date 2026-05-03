@@ -80,6 +80,90 @@ function clearFlash() {
   if (ul) ul.innerHTML = "";
 }
 
+const HISTORY_STORAGE_KEY = "exam-review-helper-history-v1";
+const HISTORY_MAX_ITEMS = 80;
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(items) {
+  localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
+}
+
+function appendHistoryRecord({ source_name, practice_type, text_truncated, analysis }) {
+  if (!analysis || typeof analysis !== "object") return;
+  const list = loadHistory();
+  const entry = {
+    id:
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    savedAt: new Date().toISOString(),
+    source_name: source_name || "（未命名）",
+    practice_type: practice_type || "mixed",
+    text_truncated: !!text_truncated,
+    analysis: JSON.parse(JSON.stringify(analysis)),
+  };
+  list.unshift(entry);
+  saveHistory(list.slice(0, HISTORY_MAX_ITEMS));
+}
+
+function deleteHistoryItem(id) {
+  saveHistory(loadHistory().filter((x) => x.id !== id));
+}
+
+function clearAllHistory() {
+  localStorage.removeItem(HISTORY_STORAGE_KEY);
+}
+
+function openHistoryPanel() {
+  const p = document.getElementById("history-panel");
+  if (!p) return;
+  p.hidden = false;
+  p.setAttribute("aria-hidden", "false");
+  renderHistoryList();
+}
+
+function closeHistoryPanel() {
+  const p = document.getElementById("history-panel");
+  if (!p) return;
+  p.hidden = true;
+  p.setAttribute("aria-hidden", "true");
+}
+
+function renderHistoryList() {
+  const ul = document.getElementById("history-list");
+  const empty = document.getElementById("history-empty");
+  if (!ul || !empty) return;
+  const items = loadHistory();
+  ul.innerHTML = "";
+  empty.hidden = items.length > 0;
+  for (const item of items) {
+    const li = document.createElement("li");
+    li.className = "history-item";
+    li.dataset.id = item.id;
+    const t = new Date(item.savedAt);
+    const timeStr = Number.isNaN(t.getTime())
+      ? ""
+      : t.toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" });
+    li.innerHTML =
+      `<button type="button" class="history-item__main" data-action="open-history">` +
+      `<span class="history-item__name">${escapeHtml(item.source_name || "（未命名）")}</span>` +
+      `<span class="history-item__time">${escapeHtml(timeStr)}</span>` +
+      `</button>` +
+      `<button type="button" class="history-item__delete" data-action="delete-history" aria-label="删除此条">删除</button>`;
+    ul.appendChild(li);
+  }
+}
+
 function normalizePracticeRow(raw) {
   if (typeof raw === "string") {
     return {
@@ -287,6 +371,52 @@ function init() {
 
   if (!form) return;
 
+  document.getElementById("btn-history-open")?.addEventListener("click", openHistoryPanel);
+  document.getElementById("btn-history-close")?.addEventListener("click", closeHistoryPanel);
+  document.getElementById("history-panel-backdrop")?.addEventListener("click", closeHistoryPanel);
+  document.getElementById("btn-history-clear")?.addEventListener("click", () => {
+    if (!confirm("确定清空全部历史记录？此操作不可恢复。")) return;
+    clearAllHistory();
+    renderHistoryList();
+  });
+
+  document.getElementById("history-list")?.addEventListener("click", (e) => {
+    const del = e.target.closest("[data-action='delete-history']");
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      const li = del.closest(".history-item");
+      const id = li?.dataset.id;
+      if (id) {
+        deleteHistoryItem(id);
+        renderHistoryList();
+      }
+      return;
+    }
+    const main = e.target.closest("[data-action='open-history']");
+    if (main) {
+      const li = main.closest(".history-item");
+      const id = li?.dataset.id;
+      const rec = loadHistory().find((x) => x.id === id);
+      if (!rec?.analysis) return;
+      closeHistoryPanel();
+      clearFlash();
+      renderAnalysis(
+        { source_name: rec.source_name, analysis: rec.analysis },
+        rec.text_truncated,
+        maxChars,
+        rec.practice_type || "mixed"
+      );
+      showFlash("success", "已载入历史记录。");
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const p = document.getElementById("history-panel");
+    if (p && !p.hidden) closeHistoryPanel();
+  });
+
   document.getElementById("analysis-section")?.addEventListener("click", (e) => {
     const mcqBtn = e.target.closest(".mcq-option");
     if (mcqBtn) {
@@ -446,6 +576,16 @@ function init() {
         maxChars,
         payload.practice_type || practiceType
       );
+      try {
+        appendHistoryRecord({
+          source_name: payload.source_name || file.name,
+          practice_type: payload.practice_type || practiceType,
+          text_truncated: textTruncated,
+          analysis: payload.analysis,
+        });
+      } catch (err) {
+        console.warn("历史记录保存失败", err);
+      }
     } catch (err) {
       showFlash("error", err.message || "网络错误，请稍后重试。");
     } finally {

@@ -7,6 +7,34 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
   </head>
   <body>
+    <button type="button" class="history-entry-btn" id="btn-history-open" aria-haspopup="dialog" aria-controls="history-panel">
+      历史记录
+    </button>
+
+    <div
+      id="history-panel"
+      class="history-panel"
+      hidden
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="history-panel-title"
+    >
+      <div class="history-panel__backdrop" id="history-panel-backdrop" tabindex="-1"></div>
+      <div class="history-panel__sheet">
+        <div class="history-panel__head">
+          <h2 id="history-panel-title" class="history-panel__title">历史记录</h2>
+          <button type="button" class="history-panel__close" id="btn-history-close" aria-label="关闭">×</button>
+        </div>
+        <p class="history-panel__hint">保存在本浏览器本地，清除站点数据会丢失。</p>
+        <div class="history-panel__toolbar">
+          <button type="button" class="btn btn--secondary btn--small" id="btn-history-clear">清空全部</button>
+        </div>
+        <ul class="history-list" id="history-list"></ul>
+        <p class="history-empty" id="history-empty" hidden>暂无分析记录。完成一次分析后会自动保存。</p>
+      </div>
+    </div>
+
     <div class="page">
       <header class="header">
         <h1 class="title">留学生期末复习助手</h1>
@@ -75,7 +103,7 @@
 
       <footer class="footer">
         使用 DeepSeek（deepseek-chat）；请在环境变量 DEEPSEEK_API_KEY 中配置密钥。旧版 .ppt
-        请先在本地转为 PDF 或 PPTX。大文件仅在浏览器中读取，提交给服务器的仅为纯文本。
+        请先在本地转为 PDF 或 PPTX。大文件仅在浏览器中读取，提交给服务器的仅为纯文本。分析结果可点击左上角「历史记录」保存在本机浏览器。
       </footer>
     </div>
     <script type="module" src="{{ url_for('static', filename='js/analyze.js') }}"></script>
