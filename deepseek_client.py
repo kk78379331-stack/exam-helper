@@ -76,7 +76,9 @@ JSON 的键必须严格为：
   - "what_it_is": 用最直白、最简单的语言说明「这个概念到底是什么、在讲什么」，假设读者完全没听过课也能读懂；避免堆砌术语，必要时用类比。
   - "formulas_notes": 若该考点涉及公式或符号，请写出公式（可用 LaTeX 风格或纯文本如 E=mc²），并逐项说明每个符号/变量代表什么、常用单位是什么、在题目或应用中如何代入使用；若本考点基本无公式，则写一两句话说明「本概念以定性理解为主」或「无常用公式」即可，勿留空键。
   - "life_example": 举一个贴近日常生活的短例子或小故事，帮助读者建立直觉（一两段即可）。
-- "difficult_analysis": 单个字符串，对重难点做解析，可含多段，使用 \\n 换行；
+- "difficult_analysis": 单个字符串，写本课**主干重难点解析**（条理清晰，可含多段，使用 \\n 换行）；勿把下列误区与对比混写进本字段。
+- "common_misconceptions": **字符串数组**，**恰好 2～3 条**（不得少于 2、不得多于 3），每条用一句话概括学生**最容易犯的典型错误**或**理解误区**（表述简洁、可独立阅读）。
+- "concept_comparison": 单个字符串，写 **1～2 组**本课中**易混淆的相似概念、术语或情形**之间的**核心区别**（可分点、可换行）；若讲义中可对比内容不足，也需基于材料做合理归纳，勿留空。
 - "practice_questions": 数组，每一项必须是对象，且必须包含以下字符串键：
   - "question": 题干（格式须符合用户消息中的题型要求；MCQ 须在题干后换行给出 A. B. C. D. 四行选项）；
   - "reference_answer": 参考答案（MCQ 除选项字母外可附简短文字说明）；
@@ -203,6 +205,17 @@ def _normalize_concept_explanations(
     return out[:core_len]
 
 
+def _normalize_common_misconceptions(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        parts = [x.strip() for x in re.split(r"[\n；;]+", raw) if x.strip()]
+        return parts[:5]
+    if not isinstance(raw, list):
+        return []
+    return [str(x).strip() for x in raw if str(x).strip()][:5]
+
+
 def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[str, Any]:
     raw = _strip_code_fence(content)
     try:
@@ -235,12 +248,27 @@ def parse_model_json(content: str, practice_type_hint: str = "mixed") -> dict[st
     if not isinstance(data["practice_questions"], list):
         raise DeepSeekError("practice_questions 应为数组")
 
+    if "common_misconceptions" not in data:
+        data["common_misconceptions"] = []
+    elif not isinstance(data["common_misconceptions"], list):
+        raise DeepSeekError("common_misconceptions 应为数组")
+    if "concept_comparison" not in data:
+        data["concept_comparison"] = ""
+    elif not isinstance(data["concept_comparison"], str):
+        data["concept_comparison"] = str(data["concept_comparison"])
+
     data["core_points"] = _normalize_core_points(data["core_points"])
     data["concept_explanations"] = _normalize_concept_explanations(
         len(data["core_points"]),
         data["concept_explanations"],
     )
     data["difficult_analysis"] = str(data["difficult_analysis"]).strip()
+    data["common_misconceptions"] = _normalize_common_misconceptions(
+        data.get("common_misconceptions")
+    )
+    data["concept_comparison"] = str(
+        data.get("concept_comparison") or data.get("concept_contrast") or ""
+    ).strip()
     hint = normalize_practice_type(practice_type_hint)
     data["practice_questions"] = _normalize_practice_questions(
         data["practice_questions"], hint

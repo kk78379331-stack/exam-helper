@@ -424,6 +424,99 @@ body {
   border: 1px solid var(--border);
 }
 
+.analysis__note--tight {
+  margin-bottom: 0;
+}
+
+.analysis-accordions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.accordion__item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.accordion__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--text);
+  text-align: left;
+  background: rgba(26, 35, 50, 0.65);
+  border: none;
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+}
+
+.accordion__header:hover {
+  background: rgba(91, 140, 255, 0.1);
+}
+
+.accordion__item.is-expanded > .accordion__header {
+  border-bottom-color: var(--border);
+}
+
+.accordion__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.accordion__chevron {
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+}
+
+.accordion__item.is-expanded > .accordion__header .accordion__chevron {
+  transform: rotate(225deg) translateY(2px);
+}
+
+.accordion__panel {
+  padding: 1rem 1rem 1.05rem;
+}
+
+.accordion__item:not(.is-expanded) > .accordion__panel {
+  display: none;
+}
+
+.difficult-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.difficult-block {
+  margin: 0;
+}
+
+.difficult-block__label {
+  margin: 0 0 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--accent-hover);
+  letter-spacing: 0.02em;
+}
+
+.difficult-myths {
+  margin: 0;
+}
+
 .analysis__heading {
   margin: 1.35rem 0 0.65rem;
   font-size: 1.05rem;
@@ -538,18 +631,23 @@ body {
 
 #practice-batches {
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .practice-batch {
-  margin-bottom: 0.25rem;
+  margin: 0;
+  background: rgba(0, 0, 0, 0.12);
 }
 
-.practice-batch__title {
-  margin: 0 0 0.65rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--accent-hover);
-  letter-spacing: 0.02em;
+.practice-batch .accordion__panel {
+  padding: 0.85rem 0.9rem 1rem;
+}
+
+.practice-batch__header {
+  font-size: 0.92rem;
+  padding: 0.7rem 0.9rem;
 }
 
 .practice-batch-divider {

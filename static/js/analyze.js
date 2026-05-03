@@ -272,6 +272,132 @@ function buildPracticeItemHtml(row, practiceType) {
   );
 }
 
+function buildAccordionItem(title, panelHtml, expanded) {
+  const expandedCls = expanded ? " is-expanded" : "";
+  const ae = expanded ? "true" : "false";
+  return (
+    `<section class="accordion__item${expandedCls}">` +
+    `<button type="button" class="accordion__header" aria-expanded="${ae}">` +
+    `<span class="accordion__title">${escapeHtml(title)}</span>` +
+    `<span class="accordion__chevron" aria-hidden="true"></span>` +
+    `</button>` +
+    `<div class="accordion__panel">${panelHtml}</div>` +
+    `</section>`
+  );
+}
+
+function buildCorePointsInnerHtml(analysis, textTruncated, maxChars) {
+  let inner = "";
+  if (textTruncated) {
+    inner += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
+  }
+  const impClass = {
+    必考: "importance--must",
+    一般: "importance--normal",
+    了解: "importance--light",
+  };
+  inner += `<ol class="analysis-list core-points-list">`;
+  for (const raw of analysis.core_points || []) {
+    let point;
+    let imp;
+    if (typeof raw === "string") {
+      point = raw;
+      imp = "一般";
+    } else {
+      point = raw.point || "";
+      imp = raw.importance || "一般";
+    }
+    if (!impClass[imp]) imp = "一般";
+    const ic = impClass[imp];
+    inner += `<li class="core-point">`;
+    inner += `<span class="core-point__tag ${ic}">【${escapeHtml(imp)}】</span>`;
+    inner += `<span class="core-point__text">${escapeHtml(point)}</span>`;
+    inner += `</li>`;
+  }
+  inner += `</ol>`;
+  return inner;
+}
+
+function buildConceptDetailInnerHtml(analysis) {
+  const points = analysis.core_points || [];
+  const items = analysis.concept_explanations;
+  if (!Array.isArray(items) || items.length === 0) {
+    return `<p class="analysis__note">暂无概念详解数据（可能为旧版历史记录）。</p>`;
+  }
+  let html = `<div class="concept-detail-list">`;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i] || {};
+    const rawPoint = points[i];
+    const title =
+      typeof rawPoint === "string"
+        ? rawPoint
+        : rawPoint?.point || `考点 ${i + 1}`;
+    const w = it.what_it_is || it.plain_explanation || "";
+    const f = it.formulas_notes || it.formulas || "";
+    const ex = it.life_example || "";
+    const wHtml = w ? escapeHtml(w).replace(/\n/g, "<br />") : "（暂无）";
+    const fHtml = f ? escapeHtml(f).replace(/\n/g, "<br />") : "（暂无）";
+    const exHtml = ex ? escapeHtml(ex).replace(/\n/g, "<br />") : "（暂无）";
+    html += `<article class="concept-detail-card">`;
+    html += `<h3 class="concept-detail-card__title">${escapeHtml(title)}</h3>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">是什么（零基础版）</h4>`;
+    html += `<div class="concept-detail-block__body">${wHtml}</div>`;
+    html += `</section>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">公式与符号</h4>`;
+    html += `<div class="concept-detail-block__body">${fHtml}</div>`;
+    html += `</section>`;
+    html += `<section class="concept-detail-block">`;
+    html += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
+    html += `<div class="concept-detail-block__body">${exHtml}</div>`;
+    html += `</section>`;
+    html += `</article>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function buildDifficultInnerHtml(analysis) {
+  const main = String(analysis.difficult_analysis ?? "");
+  const myths = analysis.common_misconceptions;
+  const cc = String(analysis.concept_comparison ?? "");
+  let html = `<div class="difficult-stack">`;
+  html += `<section class="difficult-block">`;
+  html += `<h4 class="difficult-block__label">重难点解析</h4>`;
+  html += `<div class="analysis__prose">${escapeHtml(main).replace(/\n/g, "<br />")}</div>`;
+  html += `</section>`;
+  html += `<section class="difficult-block">`;
+  html += `<h4 class="difficult-block__label">常见误区</h4>`;
+  if (Array.isArray(myths) && myths.length) {
+    html += `<ol class="difficult-myths analysis-list">`;
+    for (const m of myths) {
+      html += `<li>${escapeHtml(String(m)).replace(/\n/g, "<br />")}</li>`;
+    }
+    html += `</ol>`;
+  } else {
+    html += `<p class="analysis__note analysis__note--tight">暂无。</p>`;
+  }
+  html += `</section>`;
+  html += `<section class="difficult-block">`;
+  html += `<h4 class="difficult-block__label">概念对比</h4>`;
+  html += `<div class="analysis__prose">${cc ? escapeHtml(cc).replace(/\n/g, "<br />") : "暂无。"}</div>`;
+  html += `</section></div>`;
+  return html;
+}
+
+function rebalancePracticeBatchAccordions() {
+  const batchesEl = document.getElementById("practice-batches");
+  if (!batchesEl) return;
+  const sections = batchesEl.querySelectorAll(".practice-batch");
+  sections.forEach((sec, i) => {
+    const isLast = i === sections.length - 1;
+    sec.classList.toggle("is-expanded", isLast);
+    const hdr = sec.querySelector(":scope > .accordion__header");
+    if (hdr) hdr.setAttribute("aria-expanded", isLast ? "true" : "false");
+  });
+}
+
 function buildPracticeOlInnerHtml(questions, practiceType) {
   let html = "";
   for (const raw of questions || []) {
@@ -280,21 +406,25 @@ function buildPracticeOlInnerHtml(questions, practiceType) {
   return html;
 }
 
-function buildPracticeBatchSectionHtml(batchIndex, questions, practiceType) {
+function buildPracticeBatchSectionHtml(batchIndex, questions, practiceType, expandedBatch) {
+  const expandedCls = expandedBatch ? " is-expanded" : "";
+  const ae = expandedBatch ? "true" : "false";
   return (
-    `<section class="practice-batch" data-batch="${batchIndex}">` +
-    `<h3 class="practice-batch__title">第${batchIndex}批练习题</h3>` +
+    `<section class="accordion__item practice-batch${expandedCls}" data-batch="${batchIndex}">` +
+    `<button type="button" class="accordion__header practice-batch__header" aria-expanded="${ae}">` +
+    `<span class="accordion__title">第${batchIndex}批练习题</span>` +
+    `<span class="accordion__chevron" aria-hidden="true"></span>` +
+    `</button>` +
+    `<div class="accordion__panel">` +
     `<ol class="analysis-list practice-list">` +
     buildPracticeOlInnerHtml(questions, practiceType) +
-    `</ol></section>`
+    `</ol></div></section>`
   );
 }
 
-function buildPracticeRootHtml(analysis, practiceType, showReroll) {
-  let html = `<div id="practice-root">`;
-  html += `<h2 class="analysis__heading">同类型练习题</h2>`;
-  html += `<div id="practice-batches">`;
-  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType);
+function buildPracticeInnerHtml(analysis, practiceType, showReroll) {
+  let html = `<div id="practice-root"><div id="practice-batches">`;
+  html += buildPracticeBatchSectionHtml(1, analysis.practice_questions, practiceType, true);
   html += `</div>`;
   if (showReroll) {
     html +=
@@ -334,49 +464,6 @@ function resetToUploadState() {
   }
 }
 
-function buildConceptExplanationsSection(analysis) {
-  const points = analysis.core_points || [];
-  const items = analysis.concept_explanations;
-  if (!Array.isArray(items) || items.length === 0) {
-    return (
-      `<h2 class="analysis__heading">概念详解</h2>` +
-      `<p class="analysis__note">暂无概念详解数据（可能为旧版历史记录）。</p>`
-    );
-  }
-  let html = `<h2 class="analysis__heading">概念详解</h2><div class="concept-detail-list">`;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i] || {};
-    const rawPoint = points[i];
-    const title =
-      typeof rawPoint === "string"
-        ? rawPoint
-        : rawPoint?.point || `考点 ${i + 1}`;
-    const w = it.what_it_is || it.plain_explanation || "";
-    const f = it.formulas_notes || it.formulas || "";
-    const ex = it.life_example || "";
-    const wHtml = w ? escapeHtml(w).replace(/\n/g, "<br />") : "（暂无）";
-    const fHtml = f ? escapeHtml(f).replace(/\n/g, "<br />") : "（暂无）";
-    const exHtml = ex ? escapeHtml(ex).replace(/\n/g, "<br />") : "（暂无）";
-    html += `<article class="concept-detail-card">`;
-    html += `<h3 class="concept-detail-card__title">${escapeHtml(title)}</h3>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">是什么（零基础版）</h4>`;
-    html += `<div class="concept-detail-block__body">${wHtml}</div>`;
-    html += `</section>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">公式与符号</h4>`;
-    html += `<div class="concept-detail-block__body">${fHtml}</div>`;
-    html += `</section>`;
-    html += `<section class="concept-detail-block">`;
-    html += `<h4 class="concept-detail-block__label">生活化例子</h4>`;
-    html += `<div class="concept-detail-block__body">${exHtml}</div>`;
-    html += `</section>`;
-    html += `</article>`;
-  }
-  html += `</div>`;
-  return html;
-}
-
 function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", options = {}) {
   const showPracticeReroll = options.showPracticeReroll === true;
   const section = document.getElementById("analysis-section");
@@ -390,38 +477,20 @@ function renderAnalysis(data, textTruncated, maxChars, practiceType = "mixed", o
   nameEl.textContent = data.source_name || "（未命名）";
   resultSection.hidden = false;
 
-  let html = "";
-  if (textTruncated) {
-    html += `<p class="analysis__note">讲义较长，仅前 ${maxChars} 个字符已参与本次分析。</p>`;
-  }
-  const impClass = {
-    必考: "importance--must",
-    一般: "importance--normal",
-    了解: "importance--light",
-  };
-  html += `<h2 class="analysis__heading">核心考点列表</h2><ol class="analysis-list core-points-list">`;
-  for (const raw of data.analysis.core_points || []) {
-    let point;
-    let imp;
-    if (typeof raw === "string") {
-      point = raw;
-      imp = "一般";
-    } else {
-      point = raw.point || "";
-      imp = raw.importance || "一般";
-    }
-    if (!impClass[imp]) imp = "一般";
-    const ic = impClass[imp];
-    html += `<li class="core-point">`;
-    html += `<span class="core-point__tag ${ic}">【${escapeHtml(imp)}】</span>`;
-    html += `<span class="core-point__text">${escapeHtml(point)}</span>`;
-    html += `</li>`;
-  }
-  html += `</ol>`;
-  html += buildConceptExplanationsSection(data.analysis);
-  html += `<h2 class="analysis__heading">难点解析</h2>`;
-  html += `<div class="analysis__prose">${escapeHtml(String(data.analysis.difficult_analysis ?? "")).replace(/\n/g, "<br />")}</div>`;
-  html += buildPracticeRootHtml(data.analysis, practiceType, showPracticeReroll);
+  let html = `<div class="analysis-accordions">`;
+  html += buildAccordionItem(
+    "核心考点列表",
+    buildCorePointsInnerHtml(data.analysis, textTruncated, maxChars),
+    true
+  );
+  html += buildAccordionItem("概念详解", buildConceptDetailInnerHtml(data.analysis), false);
+  html += buildAccordionItem("难点解析", buildDifficultInnerHtml(data.analysis), false);
+  html += buildAccordionItem(
+    "同类型练习题",
+    buildPracticeInnerHtml(data.analysis, practiceType, showPracticeReroll),
+    true
+  );
+  html += `</div>`;
 
   section.innerHTML = html;
   section.hidden = false;
@@ -499,6 +568,17 @@ function init() {
   });
 
   document.getElementById("analysis-section")?.addEventListener("click", (e) => {
+    const accHeader = e.target.closest(".accordion__header");
+    if (accHeader) {
+      const item = accHeader.closest(".accordion__item");
+      if (item) {
+        item.classList.toggle("is-expanded");
+        const expanded = item.classList.contains("is-expanded");
+        accHeader.setAttribute("aria-expanded", expanded ? "true" : "false");
+        return;
+      }
+    }
+
     const rerollBtn = e.target.closest(".js-reroll-practice");
     if (rerollBtn) {
       e.preventDefault();
@@ -532,16 +612,11 @@ function init() {
           }
           const existing = batchesEl.querySelectorAll(".practice-batch").length;
           const nextBatch = existing + 1;
-          if (nextBatch > 1) {
-            batchesEl.insertAdjacentHTML(
-              "beforeend",
-              `<hr class="practice-batch-divider" aria-hidden="true" />`
-            );
-          }
           batchesEl.insertAdjacentHTML(
             "beforeend",
-            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt)
+            buildPracticeBatchSectionHtml(nextBatch, payload.practice_questions, pt, true)
           );
+          rebalancePracticeBatchAccordions();
           batchesEl
             .querySelector(`.practice-batch[data-batch="${nextBatch}"]`)
             ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
